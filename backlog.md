@@ -15,7 +15,7 @@
 - [x] ~~Implement inline layout~~ (2026-04-03 sprint) — text wraps at container width; white-space:normal collapses whitespace, pre/pre-wrap preserves it; text boxes inherit parent style including white-space; explicit newline handling in pre mode
 - [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed` with `top/left/right/bottom` offsets
-- [ ] **Implement z-index stacking** — elements stack in layers, `z-index` controls stacking order
+- [x] ~~Implement z-index stacking~~ (2026-04-03 sprint) — children sorted by z-index before drawing; positioned elements drawn after normal flow; z-index parsed as integer
 - [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — visibility:hidden now paints background/border/padding but hides content and children; display:none skips box entirely
 - [x] ~~Implement overflow handling~~ (2026-04-03 sprint) — overflow:hidden/scroll/auto clips children to content box via clip stack; visible is no-op (default)
 

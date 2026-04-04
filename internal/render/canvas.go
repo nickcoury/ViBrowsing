@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"strconv"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/layout"
@@ -217,9 +218,49 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 
 	// Children (only if not hidden)
 	if !isHidden {
-		for _, child := range box.Children {
-			c.DrawBox(child)
+		// Sort children by z-index for proper stacking order
+		children := make([]*layout.Box, len(box.Children))
+		copy(children, box.Children)
+		c.drawChildrenSorted(children)
+	}
+}
+
+// drawChildrenSorted draws children in z-index order, then paint order.
+func (c *Canvas) drawChildrenSorted(children []*layout.Box) {
+	// Separate positioned and non-positioned children
+	type zChild struct {
+		box  *layout.Box
+		z    int
+		pos  bool
+	}
+	var normal, positioned []zChild
+
+	for _, child := range children {
+		z, _ := strconv.Atoi(child.Style["z-index"])
+		pos := child.Style["position"] != "" && child.Style["position"] != "static"
+		if pos {
+			positioned = append(positioned, zChild{child, z, true})
+		} else {
+			normal = append(normal, zChild{child, z, false})
 		}
+	}
+
+	// Sort each group by z-index
+	var sortZIndex []zChild
+	sortZIndex = append(sortZIndex, normal...)
+	sortZIndex = append(sortZIndex, positioned...)
+	// Simple bubble sort (children list is usually small)
+	for i := 0; i < len(sortZIndex)-1; i++ {
+		for j := i + 1; j < len(sortZIndex); j++ {
+			if sortZIndex[j].z < sortZIndex[i].z {
+				sortZIndex[i], sortZIndex[j] = sortZIndex[j], sortZIndex[i]
+			}
+		}
+	}
+
+	// Draw in z-index order
+	for _, zc := range sortZIndex {
+		c.DrawBox(zc.box)
 	}
 }
 
