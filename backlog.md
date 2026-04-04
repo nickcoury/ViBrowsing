@@ -440,3 +440,51 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Incremental layout** — layout visible viewport first, then off-screen content
 - [ ] **CSS selector indexing** — build index of elements by class/id/tag for fast selector matching
 - [ ] **Text measurement caching** — cache Ebitengine text measurement results per font/size/text combo
+
+---
+
+## 🆕 New Items (2026-04-04 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+- [ ] **Fix table cell collapsing borders** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
+- [ ] **Fix float clearing** — blocks that clear:left/right/both should properly position below the float, not overlap it
+- [ ] **Implement CSS transform on inline boxes** — transforms on inline elements should create a transform box and not affect line layout
+
+### 🟡 High (Layout/Rendering)
+- [ ] **Implement CSS `column-width` and `column-count`** — multi-column layout with column-gap and column-rule
+- [ ] **Implement CSS `aspect-ratio`** — forced aspect ratio on boxes (width/height from ratio)
+- [ ] **Implement CSS `filter`** — blur, brightness, contrast, grayscale, sepia effects on elements
+- [ ] **Implement CSS `backdrop-filter`** — blur behind fixed/absolute positioned elements
+- [ ] **Implement CSS `clip-path`** — polygon and basic shape clipping on elements
+- [ ] **Implement `<iframe>` rendering** — show placeholder for iframes (recursive rendering is complex)
+- [ ] **Implement `<canvas>` 2D context** — render canvas drawing commands to output
+
+### 🟡 High (CSS Selectors & Cascade)
+- [ ] **Implement `:nth-child(an+b)` selector** — complex nth-child formulas (even, odd, 2n+1, etc.)
+- [ ] **Implement `:not()` pseudo-class** — negation selector with complex selectors inside
+- [ ] **Implement `:checked`, `:disabled`, `:enabled` pseudo-classes** — for form state matching
+- [ ] **Implement CSS `@keyframes` parsing** — store keyframe rules for later animation use
+- [ ] **Implement CSS `animation` property** — apply keyframe animations to elements
+- [ ] **Implement CSS `transition` property** — smooth property transitions (requires state tracking)
+
+### 🟡 High (HTML/CSS Coverage)
+- [ ] **Implement `<slot>` and shadow DOM basics** — web component slot projection (parse but don't render)
+- [ ] **Implement `<dialog>` element** — modal dialog with backdrop
+- [ ] **Implement `<meter>` and `<progress>`** — gauge and progress bar elements
+- [ ] **Implement CSS `counter()` and `counters()`** — automatic numbering for lists/headings
+- [ ] **Implement CSS `calc()` in values** — `width: calc(100% - 20px)` in CSS value parsing
+- [ ] **Implement CSS `clamp()` and `min()`/`max()`** — modern CSS comparison functions
+
+### 🟢 Medium (Content & Rendering)
+- [ ] **Implement `<abbr>` with title tooltip** — abbreviation with full text on hover (tooltip)
+- [ ] **Implement `<mark>` highlighting** — marked/highlighted text with yellow background
+- [ ] **Implement `<ruby>` annotation** — ruby text above/below base text for East Asian typography
+- [ ] **Implement `<bdi>` and `<bdo>`** — bidirectional text isolation and override
+- [ ] **Implement emoji rendering** — proper color emoji character display (may need font configuration)
+
+### 🟢 Medium (Performance)
+- [ ] **Lazy image decoding** — don't decode images until visible in viewport
+- [ ] **CSS selector indexing** — build index of elements by class/id/tag for fast selector matching
+- [ ] **Text measurement caching** — cache Ebitengine text measurement results per font/size/text combo
+- [ ] **Streaming HTML parse** — for large pages, parse HTML incrementally without buffering all
