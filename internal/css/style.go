@@ -1518,6 +1518,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["unicode-bidi"] = value
 	case "direction":
 		props["direction"] = value
+	case "aspect-ratio":
+		props["aspect-ratio"] = value
 	case "writing-mode":
 		props["writing-mode"] = value
 	case "tab-size":

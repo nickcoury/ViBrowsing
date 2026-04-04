@@ -697,9 +697,55 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟠 Low (Canvas/Drawing)
 
-- [ ] **Implement `background-repeat: space/round`** — Tile backgrounds with spacing or scaling
-- [ ] **Implement `background-position` (percentages)** — Offset background image by percentage
-- [ ] **Implement `background-size: cover/contain`** — Scale background to fill or fit
-- [ ] **Implement `text-shadow` multiple shadows** — Multiple comma-separated shadows on text
-- [ ] **Implement `box-shadow` multiple shadows** — Multiple comma-separated drop shadows
+- [x] ~~Implement `background-repeat: space/round`~~ (2026-04-04 sprint 2) — space distributes tiles evenly with spacing; round scales tiles to fill
+- [x] ~~Implement `background-position` (percentages)~~ (2026-04-04 sprint 2) — percentage values resolve against (container - image) for offset
+- [x] ~~Implement `background-size: cover/contain`~~ (2026-04-04 sprint 2) — already partially done; cover fills, contain fits
+- [x] ~~Implement `text-shadow` multiple shadows~~ (2026-04-04 sprint 2) — comma-separated shadows via splitShadowParts
+- [x] ~~Implement `box-shadow` multiple shadows~~ (2026-04-04 sprint 2) — already supported via comma split
 - [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box
+
+---
+
+## 🆕 New Items (2026-04-04 Sprint 2)
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement `<abbr>` with title tooltip** — Abbreviation with full text on hover (store title, show on mouseover)
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems
+- [ ] **Implement `text-justify: inter-word/inter-character`** — Justification algorithm improvements
+- [ ] **Implement `hyphens: auto/manual`** — Automatic hyphenation of words at line breaks
+- [ ] **Implement CSS `@container` queries** — Container-style responsive design
+
+### 🟡 High (CSS Selectors & Cascade)
+
+- [ ] **Implement `::first-line` pseudo-element** — Style first line of text differently
+- [ ] **Implement `::first-letter` pseudo-element** — Style first letter of text differently (drop cap)
+- [ ] **Implement `::before` and `::after` with content property** — Generate content before/after elements
+- [ ] **Implement `:focus-within` pseudo-class** — Matches when element or descendant has focus
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement window.matchMedia()** — JavaScript API for media query testing
+- [ ] **Implement CSS.supports() API** — JavaScript API for CSS feature detection
+- [ ] **Implement CSS counter() rendering in content** — Draw counters for list numbering
+- [ ] **Implement window.scrollTo() and window.scrollBy()** — Scroll the viewport programmatically
+- [ ] **Implement element.scrollIntoView()** — Scroll element into viewport
+
+### 🟢 Medium (Performance)
+
+- [ ] **Implement text measurement caching** — Cache font.MeasureString results per font/size/text
+- [ ] **Implement CSS selector indexing** — Build index of elements by class/id/tag for fast matching
+- [ ] **Implement image lazy decoding** — Decode images only when they enter viewport
+
+### 🟠 Low (Content & Rendering)
+
+- [ ] **Implement `<ruby>` layout fully** — Ruby annotations above/below base text for ruby elements
+- [ ] **Implement `image-rendering: pixelated`** — Crisp pixel art scaling
+- [ ] **Implement `shape-outside` for floats** — Non-rectangular float boundaries using polygon
+- [ ] **Implement `clip-path: path()` SVG paths** — Support for SVG path data in clip-path
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Download html5lib test corpus** — Run 500+ HTML parsing edge case tests
+- [ ] **Visual screenshot regression tests** — Collect baseline screenshots, diff on changes
+- [ ] **go-fuzz fuzz testing** — Generate random HTML/CSS, verify no panics
