@@ -59,6 +59,9 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"flex-wrap":       "nowrap",
 		"gap":             "0",
 		"border-radius":   "0",
+		"outline-width":   "0",
+		"outline-style":   "none",
+		"outline-color":   "black",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -314,5 +317,24 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["gap"] = value
 	case "border-radius":
 		props["border-radius"] = value
+	case "outline-width":
+		props["outline-width"] = value
+	case "outline-style":
+		props["outline-style"] = value
+	case "outline-color":
+		props["outline-color"] = value
+	case "outline":
+		// outline is a shorthand: outline-width outline-style outline-color
+		// Parse space-separated values
+		parts := strings.Fields(value)
+		if len(parts) >= 1 {
+			props["outline-style"] = parts[0] // style is always first
+		}
+		if len(parts) >= 2 {
+			props["outline-width"] = parts[1]
+		}
+		if len(parts) >= 3 {
+			props["outline-color"] = parts[2]
+		}
 	}
 }

@@ -220,6 +220,25 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
 	}
 
+	// Outline (drawn outside border box, like border but doesn't affect layout)
+	outlineWidth := int(css.ParseLength(box.Style["outline-width"]).Value)
+	outlineColor := css.ParseColor(box.Style["outline-color"])
+	outlineStyle := box.Style["outline-style"]
+	if outlineStyle == "none" || outlineStyle == "" || outlineWidth == 0 {
+		outlineColor = css.Color{R: 0, G: 0, B: 0, A: 0}
+	}
+	if outlineWidth > 0 {
+		if opacity < 1 {
+			outlineColor = applyOpacity(outlineColor, opacity)
+		}
+		// Outline is drawn around the outer edge of the border area
+		ox := contentX - outlineWidth
+		oy := contentY - outlineWidth
+		ow := contentW + outlineWidth*2
+		oh := contentH + outlineWidth*2
+		c.DrawBorder(ox, oy, ow, oh, outlineWidth, outlineColor)
+	}
+
 	// Handle overflow clipping (clip to content box for hidden/scroll/auto)
 	overflow := box.Style["overflow"]
 	overflowX := box.Style["overflow-x"]
