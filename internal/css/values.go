@@ -83,6 +83,41 @@ func ParseLength(s string) Length {
 	}
 }
 
+// BorderRadius represents CSS border-radius (1-4 values).
+type BorderRadius struct {
+	TopLeft, TopRight, BottomRight, BottomLeft Length
+}
+
+// ParseBorderRadius parses "10px", "10px 5px", "10px 5px 10px", "10px 5px 10px 5px".
+func ParseBorderRadius(s string) BorderRadius {
+	parts := strings.Fields(s)
+	if len(parts) == 0 {
+		return BorderRadius{}
+	}
+	if len(parts) == 1 {
+		v := ParseLength(parts[0])
+		return BorderRadius{v, v, v, v}
+	}
+	if len(parts) == 2 {
+		v1 := ParseLength(parts[0])
+		v2 := ParseLength(parts[1])
+		return BorderRadius{v1, v2, v1, v2}
+	}
+	if len(parts) == 3 {
+		v1 := ParseLength(parts[0])
+		v2 := ParseLength(parts[1])
+		v3 := ParseLength(parts[2])
+		return BorderRadius{v1, v2, v3, v2}
+	}
+	// 4 values
+	return BorderRadius{
+		ParseLength(parts[0]),
+		ParseLength(parts[1]),
+		ParseLength(parts[2]),
+		ParseLength(parts[3]),
+	}
+}
+
 // ParseColor parses a CSS color string.
 func ParseColor(s string) Color {
 	s = strings.TrimSpace(s)

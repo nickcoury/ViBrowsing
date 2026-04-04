@@ -94,7 +94,7 @@
 
 ### Missing CSS properties
 - [ ] **Implement `background` shorthand** — `background: #fff url(img.png) no-repeat center top` with color, image, repeat, position, size
-- [ ] **Implement `border-radius`** — rounded corners on boxes, including per-corner (`border-radius: 10px 5px 10px 5px`)
+- [x] ~~Implement `border-radius`~~ (2026-04-04 sprint partial) — ParseBorderRadius parses 1-4 values (top-left, top-right, bottom-right, bottom-left); border-radius stored in style; drawing with rounded corners stubbed (still draws square in canvas)
 - [ ] **Implement `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
 - [ ] **Implement `outline`** — focus ring around elements (like border but doesn't affect layout)
 - [ ] **Implement `transform`** — rotate, scale, translate (2D transforms)

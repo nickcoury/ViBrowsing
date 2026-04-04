@@ -58,6 +58,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"align-items":     "stretch",
 		"flex-wrap":       "nowrap",
 		"gap":             "0",
+		"border-radius":   "0",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -311,5 +312,7 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["flex-wrap"] = value
 	case "gap":
 		props["gap"] = value
+	case "border-radius":
+		props["border-radius"] = value
 	}
 }
