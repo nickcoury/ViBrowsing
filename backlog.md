@@ -38,7 +38,7 @@
 - [ ] **Implement CSS `background-image`, `background-repeat`, `background-position`, `background-size`** — for gradients and images
 - [ ] **Implement CSS `background` shorthand** — `background: #fff url(img.png) no-repeat center top`
 - [ ] **Implement CSS `border-radius`** — rounded corners on boxes, including per-corner (`border-radius: 10px 5px 10px 5px`)
-- [ ] **Implement CSS `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
+- [x] ~~Implement CSS `box-shadow`~~ (2026-04-04 sprint) — parse box-shadow value; draw shadow rectangle offset from content box
 - [x] ~~Implement CSS `text-align`~~ (2026-04-04 sprint) — stored in style props; DrawText respects alignment offset
 - [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration not yet rendered (storage only)
 - [x] ~~Implement CSS `line-height`~~ (2026-04-04 sprint) — already worked; ParseLength handles unitless values

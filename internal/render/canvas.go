@@ -176,11 +176,13 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		}
 	}
 
-	// Background (margin box area)
+	// Background
 	bgColor := css.ParseColor(box.Style["background"])
 	if opacity < 1 {
 		bgColor = applyOpacity(bgColor, opacity)
 	}
+
+	// Background (margin box area) — use rounded rect if border-radius set
 	marginLeft := int(css.ParseLength(box.Style["margin-left"]).Value)
 	marginTop := int(css.ParseLength(box.Style["margin-top"]).Value)
 	marginRight := int(css.ParseLength(box.Style["margin-right"]).Value)
@@ -189,21 +191,36 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	marginY := contentY - marginTop
 	marginW := marginLeft + contentW + marginRight
 	marginH := marginTop + contentH + marginBottom
-	c.FillRect(marginX, marginY, marginW, marginH, bgColor)
 
-	// Padding (fill the padding box, drawn before border so border is on top)
+	borderRadius := css.ParseBorderRadius(box.Style["border-radius"])
+	borderRadiusPx := borderRadius.TopLeft
+
+	// Parse padding once (used in both branches and later for overflow clip)
 	paddingTop := int(css.ParseLength(box.Style["padding-top"]).Value)
 	paddingRight := int(css.ParseLength(box.Style["padding-right"]).Value)
 	paddingBottom := int(css.ParseLength(box.Style["padding-bottom"]).Value)
 	paddingLeft := int(css.ParseLength(box.Style["padding-left"]).Value)
-
 	paddingX := contentX + paddingLeft
 	paddingY := contentY + paddingTop
 	paddingW := contentW - paddingLeft - paddingRight
 	paddingH := contentH - paddingTop - paddingBottom
 
-	if paddingW > 0 && paddingH > 0 {
-		c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
+	// Use rounded rect if border-radius is set
+	if borderRadiusPx.Value > 0 && borderRadiusPx.Unit == css.UnitPx {
+		cornerR := int(borderRadiusPx.Value)
+		c.DrawRoundedRect(marginX, marginY, marginW, marginH, cornerR, bgColor)
+		// Padding area (smaller rounded rect inside)
+		// Reduce corner radius for inner layers (approximation)
+		innerR := cornerR / 2
+		if paddingW > 0 && paddingH > 0 && innerR > 0 {
+			c.DrawRoundedRect(paddingX, paddingY, paddingW, paddingH, innerR, bgColor)
+		}
+	} else {
+		c.FillRect(marginX, marginY, marginW, marginH, bgColor)
+
+		if paddingW > 0 && paddingH > 0 {
+			c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
+		}
 	}
 
 	// Border (drawn last so it's on top of padding/background)
@@ -345,12 +362,142 @@ func (c *Canvas) drawChildrenSorted(children []*layout.Box) {
 	}
 }
 
-// DrawBorder draws a border around a rectangle.
+// DrawBorder draws a border around a rectangle with rounded corners.
 func (c *Canvas) DrawBorder(x, y, w, h, bw int, col color.Color) {
-	c.FillRect(x, y, w, bw, col)
-	c.FillRect(x, y+h-bw, w, bw, col)
-	c.FillRect(x, y, bw, h, col)
-	c.FillRect(x+w-bw, y, bw, h, col)
+	// Draw corners with arcs, straight edges with rects
+	// For simplicity when bw is small relative to box, use basic rects
+	// For larger bw with border-radius, draw properly
+
+	// Draw four corners as quarter arcs
+	// Top-left corner
+	c.drawCornerArc(x+bw/2, y+bw/2, bw/2, col, 3)
+	// Top-right corner
+	c.drawCornerArc(x+w-bw/2, y+bw/2, bw/2, col, 2)
+	// Bottom-right corner
+	c.drawCornerArc(x+w-bw/2, y+h-bw/2, bw/2, col, 1)
+	// Bottom-left corner
+	c.drawCornerArc(x+bw/2, y+h-bw/2, bw/2, col, 4)
+
+	// Draw four edges (each edge is a rect that doesn't overlap corners)
+	// Top edge (between corners)
+	if w > bw*2 {
+		c.FillRect(x+bw/2, y, w-bw*2, bw/2, col)
+		c.FillRect(x+bw/2, y+bw/2, w-bw*2, bw/2, col)
+	}
+	// Bottom edge
+	if w > bw*2 {
+		c.FillRect(x+bw/2, y+h-bw/2, w-bw*2, bw/2, col)
+		c.FillRect(x+bw/2, y+h-bw, w-bw*2, bw/2, col)
+	}
+	// Left edge (between corners)
+	if h > bw*2 {
+		c.FillRect(x, y+bw/2, bw/2, h-bw*2, col)
+		c.FillRect(x+bw/2, y+bw/2, bw/2, h-bw*2, col)
+	}
+	// Right edge (between corners)
+	if h > bw*2 {
+		c.FillRect(x+w-bw, y+bw/2, bw/2, h-bw*2, col)
+		c.FillRect(x+w-bw/2, y+bw/2, bw/2, h-bw*2, col)
+	}
+}
+
+// drawCornerArc draws a quarter circle arc at corner (cx, cy) with radius r.
+// quadrant: 1=bottom-right, 2=top-right, 3=top-left, 4=bottom-left
+func (c *Canvas) drawCornerArc(cx, cy, r int, col color.Color, quadrant int) {
+	if r <= 0 {
+		return
+	}
+	// Draw filled arc by iterating pixels
+	// Using midpoint circle algorithm for each quadrant
+	r2 := r * r
+	for py := 0; py <= r; py++ {
+		for px := 0; px <= r; px++ {
+			if px*px+py*py <= r2 {
+				var dx, dy int
+				switch quadrant {
+				case 1: // bottom-right
+					dx, dy = px, py
+				case 2: // top-right
+					dx, dy = px, -py
+				case 3: // top-left
+					dx, dy = -px, -py
+				case 4: // bottom-left
+					dx, dy = -px, py
+				}
+				c.SetPixel(cx+dx, cy+dy, col)
+			}
+		}
+	}
+}
+
+// DrawRoundedRect draws a filled rectangle with rounded corners.
+func (c *Canvas) DrawRoundedRect(x, y, w, h int, radius int, col color.Color) {
+	if w <= 0 || h <= 0 || radius <= 0 {
+		return
+	}
+
+	// Clamp radius to not exceed dimensions
+	if radius > w/2 {
+		radius = w / 2
+	}
+	if radius > h/2 {
+		radius = h / 2
+	}
+
+	// Draw center rectangle (without corners)
+	centerX := x + radius
+	centerW := w - radius*2
+	if centerW > 0 && h > 0 {
+		c.FillRect(centerX, y, centerW, radius, col)
+		c.FillRect(centerX, y+h-radius, centerW, radius, col)
+		c.FillRect(centerX, y+radius, centerW, h-radius*2, col)
+	}
+	// Draw left rectangle
+	if radius > 0 && h > radius*2 {
+		c.FillRect(x, y+radius, radius, h-radius*2, col)
+	}
+	// Draw right rectangle
+	if radius > 0 && h > radius*2 {
+		c.FillRect(x+w-radius, y+radius, radius, h-radius*2, col)
+	}
+
+	// Draw four corner arcs
+	r := radius
+	// Top-left
+	c.drawFilledCorner(x+r, y+r, r, col, 3)
+	// Top-right
+	c.drawFilledCorner(x+w-r, y+r, r, col, 2)
+	// Bottom-right
+	c.drawFilledCorner(x+w-r, y+h-r, r, col, 1)
+	// Bottom-left
+	c.drawFilledCorner(x+r, y+h-r, r, col, 4)
+}
+
+// drawFilledCorner draws a filled quarter circle at corner (cx, cy).
+// quadrant: 1=bottom-right, 2=top-right, 3=top-left, 4=bottom-left
+func (c *Canvas) drawFilledCorner(cx, cy, r int, col color.Color, quadrant int) {
+	if r <= 0 {
+		return
+	}
+	r2 := r * r
+	for py := 0; py <= r; py++ {
+		for px := 0; px <= r; px++ {
+			if px*px+py*py <= r2 {
+				var dx, dy int
+				switch quadrant {
+				case 1: // bottom-right
+					dx, dy = px, py
+				case 2: // top-right
+					dx, dy = px, -py
+				case 3: // top-left
+					dx, dy = -px, -py
+				case 4: // bottom-left
+					dx, dy = -px, py
+				}
+				c.SetPixel(cx+dx, cy+dy, col)
+			}
+		}
+	}
 }
 
 // DrawText renders text content (placeholder: colored rectangles).
