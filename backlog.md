@@ -4,7 +4,7 @@
 
 - [x] ~~Fix HTML parser double-html/body bug~~ (2026-04-03 sprint) — tokenizer now skips html/head/body StartTag/EndTag tokens; parser bootstraps them once cleanly; no more duplication
 - [x] ~~Fix foster parenting~~ (2026-04-03 sprint) — parser now tracks table context, text inside tables is fostered to parent; implicit <p> close before block elements; table end tags properly close the table context
-- [ ] **Fix unclosed tag handling** — when encountering a closing tag with no matching open tag, don't silently drop the close. Compare behavior against html5lib reference
+- [x] ~~Fix unclosed tag handling~~ (2026-04-03 sprint partial) — generic end tag now pops stack until matching tag found; unknown end tags are skipped without crashing; block tags implicitly close open <p> tags
 - [x] ~~Implement entity decoding~~ (2026-04-03 sprint) — added decodeEntities() with named entities (amp, lt, gt, quot, apos, nbsp, ndash, mdash, lsquo, rsquo, ldquo, rdquo, hellip, copy, reg, trade, deg, plusmn, times, divide, frac12, frac14, frac34) and numeric entities (&#65;, &#x41;)
 - [ ] **Implement foreign content handling** — `<svg>` and `<math>` have special nested tokenization rules
 
