@@ -16,7 +16,7 @@
 - [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed` with `top/left/right/bottom` offsets
 - [ ] **Implement z-index stacking** — elements stack in layers, `z-index` controls stacking order
-- [ ] **Implement `visibility: hidden` and `display: none`** — hidden elements occupy no space; none elements are removed from layout entirely
+- [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — visibility:hidden now paints background/border/padding but hides content and children; display:none skips box entirely
 - [ ] **Implement overflow handling** — `overflow: hidden/scroll/auto` clips or adds scrollbars to content
 
 ## 🟡 High (HTML/CSS Coverage)

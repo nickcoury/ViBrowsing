@@ -59,7 +59,7 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		return
 	}
 
-	// Skip hidden boxes
+	// Skip display:none boxes entirely (no space occupied)
 	if display, ok := box.Style["display"]; ok && display == "none" {
 		return
 	}
@@ -104,14 +104,20 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
 	}
 
-	// Text content
-	if box.Type == layout.TextBox && box.Node != nil {
+	// Check visibility - hidden boxes paint background/border/padding but not content
+	visibility, _ := box.Style["visibility"]
+	isHidden := visibility == "hidden"
+
+	// Text content (only if not hidden)
+	if !isHidden && box.Type == layout.TextBox && box.Node != nil {
 		c.DrawText(box)
 	}
 
-	// Children
-	for _, child := range box.Children {
-		c.DrawBox(child)
+	// Children (only if not hidden)
+	if !isHidden {
+		for _, child := range box.Children {
+			c.DrawBox(child)
+		}
 	}
 }
 

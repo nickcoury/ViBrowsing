@@ -13,6 +13,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 	// Start with user-agent defaults
 	props := map[string]string{
 		"display":        "inline",
+		"visibility":     "visible",
 		"color":          "black",
 		"background":     "transparent",
 		"font-size":      "16px",
@@ -33,6 +34,16 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"height":         "auto",
 		"text-align":     "left",
 		"line-height":    "1.2",
+		"overflow":       "visible",
+		"overflow-x":     "visible",
+		"overflow-y":     "visible",
+		"position":       "static",
+		"top":            "auto",
+		"right":          "auto",
+		"bottom":         "auto",
+		"left":           "auto",
+		"float":          "none",
+		"z-index":        "auto",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -238,5 +249,27 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["line-height"] = value
 	case "font-style":
 		props["font-style"] = value
+	case "visibility":
+		props["visibility"] = value
+	case "overflow":
+		props["overflow"] = value
+	case "overflow-x":
+		props["overflow-x"] = value
+	case "overflow-y":
+		props["overflow-y"] = value
+	case "position":
+		props["position"] = value
+	case "top":
+		props["top"] = value
+	case "right":
+		props["right"] = value
+	case "bottom":
+		props["bottom"] = value
+	case "left":
+		props["left"] = value
+	case "float":
+		props["float"] = value
+	case "z-index":
+		props["z-index"] = value
 	}
 }
