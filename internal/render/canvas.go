@@ -74,22 +74,19 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		contentH = 600
 	}
 
-	// Background
+	// Background (margin box area)
 	bgColor := css.ParseColor(box.Style["background"])
-	c.FillRect(contentX, contentY, contentW, contentH, bgColor)
+	marginLeft := int(css.ParseLength(box.Style["margin-left"]).Value)
+	marginTop := int(css.ParseLength(box.Style["margin-top"]).Value)
+	marginRight := int(css.ParseLength(box.Style["margin-right"]).Value)
+	marginBottom := int(css.ParseLength(box.Style["margin-bottom"]).Value)
+	marginX := contentX - marginLeft
+	marginY := contentY - marginTop
+	marginW := marginLeft + contentW + marginRight
+	marginH := marginTop + contentH + marginBottom
+	c.FillRect(marginX, marginY, marginW, marginH, bgColor)
 
-	// Border
-	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
-	if borderWidth > 0 {
-		borderColor := css.ParseColor(box.Style["border-color"])
-		borderStyle := box.Style["border-style"]
-		if borderStyle == "none" || borderStyle == "" {
-			borderColor = css.Color{R: 0, G: 0, B: 0, A: 255}
-		}
-		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
-	}
-
-	// Padding (fill)
+	// Padding (fill the padding box, drawn before border so border is on top)
 	paddingTop := int(css.ParseLength(box.Style["padding-top"]).Value)
 	paddingRight := int(css.ParseLength(box.Style["padding-right"]).Value)
 	paddingBottom := int(css.ParseLength(box.Style["padding-bottom"]).Value)
@@ -102,6 +99,17 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 
 	if paddingW > 0 && paddingH > 0 {
 		c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
+	}
+
+	// Border (drawn last so it's on top of padding/background)
+	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
+	borderColor := css.ParseColor(box.Style["border-color"])
+	borderStyle := box.Style["border-style"]
+	if borderStyle == "none" || borderStyle == "" || borderWidth == 0 {
+		borderColor = css.Color{R: 0, G: 0, B: 0, A: 0}
+	}
+	if borderWidth > 0 {
+		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
 	}
 
 	// Check visibility - hidden boxes paint background/border/padding but not content

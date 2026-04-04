@@ -10,7 +10,7 @@
 
 ## 🟡 High (Layout/Rendering)
 
-- [ ] **Implement CSS box model properly** — margin, border, padding, content areas need pixel-accurate sizing. Currently may be conflating these
+- [x] ~~Implement CSS box model properly~~ (2026-04-03 sprint) — TotalWidth/TotalHeight now use Box fields; canvas draws margin/background/padding/border in correct order with proper geometry
 - [ ] **Implement flexbox layout** — HN stories and most modern UIs use flexbox. Need to support `display: flex`, `flex-direction`, `justify-content`, `align-items`, `gap`
 - [ ] **Implement inline layout** — text wraps within block containers, `<span>` flows with text, `white-space: pre` preserves whitespace
 - [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it

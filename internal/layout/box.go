@@ -75,18 +75,34 @@ func (b *Box) GetBorder() (top, right, bottom, left css.Length) {
 
 // TotalWidth returns the full width including margin, border, padding.
 func (b *Box) TotalWidth() float64 {
-	m := css.ParseLength(b.Style["margin-left"]).Value +
-		css.ParseLength(b.Style["margin-right"]).Value
-	w := css.ParseLength(b.Style["width"]).Value
-	t := css.ParseLength(b.Style["border-width"]).Value * 2
-	p := css.ParseLength(b.Style["padding-left"]).Value +
-		css.ParseLength(b.Style["padding-right"]).Value
+	m := b.MarginLeft.Value + b.MarginRight.Value
+	w := b.ContentW
+	t := b.BorderLeft.Value + b.BorderRight.Value
+	p := b.PaddingLeft.Value + b.PaddingRight.Value
 	return m + w + t + p
 }
 
 // TotalHeight returns the full height including margin, border, padding.
 func (b *Box) TotalHeight() float64 {
-	return b.ContentH
+	m := b.MarginTop.Value + b.MarginBottom.Value
+	h := b.ContentH
+	t := b.BorderTop.Value + b.BorderBottom.Value
+	p := b.PaddingTop.Value + b.PaddingBottom.Value
+	return m + h + t + p
+}
+
+// OuterWidth returns the width from outer edge of margin to outer edge of margin.
+func (b *Box) OuterWidth() float64 {
+	return b.MarginLeft.Value + b.ContentW + b.BorderLeft.Value +
+		b.PaddingLeft.Value + b.PaddingRight.Value + b.BorderRight.Value +
+		b.MarginRight.Value
+}
+
+// OuterHeight returns the height from outer edge of margin to outer edge of margin.
+func (b *Box) OuterHeight() float64 {
+	return b.MarginTop.Value + b.ContentH + b.BorderTop.Value +
+		b.PaddingTop.Value + b.PaddingBottom.Value + b.BorderBottom.Value +
+		b.MarginBottom.Value
 }
 
 // BuildLayoutTree converts a DOM tree to a layout tree.
