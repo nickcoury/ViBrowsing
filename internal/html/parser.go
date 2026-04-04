@@ -31,6 +31,24 @@ var tableRelatedTags = map[string]bool{
 	"td": true, "th": true, "caption": true,
 }
 
+// foreignContentTags are tags that start a foreign content context (SVG, MathML).
+var foreignContentTags = map[string]bool{
+	"svg": true,
+	"math": true,
+}
+
+// inForeignContent returns true if any element on the open stack is a foreign
+// content element (svg/math). Used to determine whether HTML adoption agency
+// and other HTML-specific parsing rules should apply.
+func (p *Parser) inForeignContent() bool {
+	for _, el := range p.openStack {
+		if foreignContentTags[el.TagName] {
+			return true
+		}
+	}
+	return false
+}
+
 // Parser builds a DOM tree from HTML tokens.
 type Parser struct {
 	tokens []*Token
@@ -41,6 +59,9 @@ type Parser struct {
 
 	// fosterParenting tracks whether we're inside a table
 	fosterParenting int // count of open table-related elements
+
+	// foreignContent tracks nesting depth of foreign content (svg/math)
+	foreignContent int
 }
 
 // NewParser creates a new parser from tokens.
@@ -54,6 +75,7 @@ func (p *Parser) Parse() *Node {
 	p.pos = 0
 	p.openStack = nil
 	p.fosterParenting = 0
+	p.foreignContent = 0
 
 	// Bootstrap: synthetic html, head, body containers
 	htmlNode := NewElement("html")
@@ -63,8 +85,11 @@ func (p *Parser) Parse() *Node {
 	htmlNode.AppendChild(bodyNode)
 	doc.AppendChild(htmlNode)
 
-	// Stack: current open elements
-	p.openStack = []*Node{htmlNode}
+	// Stack: current open elements. We push html, then head, then body.
+	// This order is important: synthetic tag handling uses FindChildByTagName
+	// which traverses the tree upward, so body can find head even when head
+	// is not an ancestor of body in the stack.
+	p.openStack = []*Node{htmlNode, headNode, bodyNode}
 
 	for p.pos < len(p.tokens) {
 		token := p.pp()
@@ -96,37 +121,54 @@ func (p *Parser) Parse() *Node {
 				node.Attributes = append(node.Attributes, attr)
 			}
 
-			// Implicit <p> close before block elements
-			if blockTags[tagName] && len(p.openStack) > 0 && p.currentIs("p") {
-				p.popTo("p")
+			// Track foreign content entry (svg/math) BEFORE HTML-specific rules.
+			// SVG and MathML are treated as inline-level in HTML — they do NOT
+			// implicitly close <p>. So we must mark foreign content before any
+			// block-tag checks fire.
+			if foreignContentTags[tagName] {
+				p.foreignContent++
 			}
 
-			// Foster parenting: insert at table's foster parent instead of inside table
-			if p.fosterParenting > 0 && !tableRelatedTags[tagName] {
-				// Find the nearest table ancestor
-				fosterIdx := p.findFosterParentIndex()
-				if fosterIdx >= 0 {
-					// Insert before the table element
-					parent := p.openStack[fosterIdx-1]
-					if parent == nil && fosterIdx > 0 {
-						parent = p.openStack[fosterIdx-1]
-					}
-					// Actually insert before table in current parent
-					tableNode := p.openStack[fosterIdx]
-					tableParent := tableNode.Parent
-					if tableParent != nil {
-						// Find table's position and insert before it
-						for i, c := range tableParent.Children {
-							if c == tableNode {
-								// Insert before table
-								children := tableParent.Children
-								tableParent.Children = append(children[:i:i], append([]*Node{node}, children[i:]...)...)
-								// Don't push to stack (node is not "open")
-								p.advance()
-								continue
+			// In foreign content (svg/math), HTML-specific rules don't apply.
+			// Only handle foster parenting and table context if NOT in foreign content.
+			if !p.inForeignContent() {
+				// Implicit <p> close before block elements
+				if blockTags[tagName] && len(p.openStack) > 0 && p.currentIs("p") {
+					p.popTo("p")
+				}
+
+				// Foster parenting: insert at table's foster parent instead of inside table
+				if p.fosterParenting > 0 && !tableRelatedTags[tagName] {
+					// Find the nearest table ancestor
+					fosterIdx := p.findFosterParentIndex()
+					if fosterIdx >= 0 {
+						// Insert before the table element
+						parent := p.openStack[fosterIdx-1]
+						if parent == nil && fosterIdx > 0 {
+							parent = p.openStack[fosterIdx-1]
+						}
+						// Actually insert before table in current parent
+						tableNode := p.openStack[fosterIdx]
+						tableParent := tableNode.Parent
+						if tableParent != nil {
+							// Find table's position and insert before it
+							for i, c := range tableParent.Children {
+								if c == tableNode {
+									// Insert before table
+									children := tableParent.Children
+									tableParent.Children = append(children[:i:i], append([]*Node{node}, children[i:]...)...)
+									// Don't push to stack (node is not "open")
+									p.advance()
+									continue
+								}
 							}
 						}
 					}
+				}
+
+				// Track table context
+				if tableRelatedTags[tagName] {
+					p.fosterParenting++
 				}
 			}
 
@@ -135,13 +177,11 @@ func (p *Parser) Parse() *Node {
 				p.openStack[len(p.openStack)-1].AppendChild(node)
 			}
 
-			// Track table context
-			if tableRelatedTags[tagName] {
-				p.fosterParenting++
-			}
-
-			// Void elements don't go on the stack
-			if !voidElements[tagName] {
+			// Void elements don't go on the stack in HTML context.
+			// But in foreign content (SVG/MathML), all elements push to the stack
+			// so that end tags properly close them and text nodes append correctly.
+			// The HTML voidElements list doesn't apply inside foreign content.
+			if p.foreignContent > 0 || !voidElements[tagName] {
 				p.openStack = append(p.openStack, node)
 			}
 
@@ -174,16 +214,39 @@ func (p *Parser) Parse() *Node {
 				continue
 			}
 
-			// Generic end tag: pop until we find matching tag
-			// If not found, skip (malformed HTML)
-			for len(p.openStack) > 0 {
-				top := p.openStack[len(p.openStack)-1]
-				if top.TagName == tagName {
-					p.openStack = p.openStack[:len(p.openStack)-1]
-					break
+			// Check if we're in foreign content BEFORE we might pop the foreign element.
+			// We need to capture this state before the pop so the decrement is correct.
+			wasInForeign := p.inForeignContent()
+
+			// Track foreign content exit (svg/math) by decrementing counter.
+			// Only decrement if this closing tag actually closes a foreign element.
+			if foreignContentTags[tagName] && wasInForeign {
+				p.foreignContent--
+			}
+
+			// End tag: pop to the matching element.
+			// When inside foreign content (svg/math), we only pop the matching element
+			// without running HTML adoption agency. This prevents foreign content
+			// structure from being disrupted by HTML's "adoption agency" algorithm.
+			if wasInForeign {
+				// Foreign content: only pop the matching element
+				for i := len(p.openStack) - 1; i >= 0; i-- {
+					if p.openStack[i].TagName == tagName {
+						p.openStack = append(p.openStack[:i], p.openStack[i+1:]...)
+						break
+					}
 				}
-				// Pop this element — it's not closed
-				p.openStack = p.openStack[:len(p.openStack)-1]
+			} else {
+				// HTML content: generic end tag — pop until we find matching tag
+				for len(p.openStack) > 0 {
+					top := p.openStack[len(p.openStack)-1]
+					if top.TagName == tagName {
+						p.openStack = p.openStack[:len(p.openStack)-1]
+						break
+					}
+					// Pop this element — it's not closed
+					p.openStack = p.openStack[:len(p.openStack)-1]
+				}
 			}
 			// Unknown end tag: skip it (don't crash on malformed HTML)
 			p.advance()

@@ -6,7 +6,7 @@
 - [x] ~~Fix foster parenting~~ (2026-04-03 sprint) — parser now tracks table context, text inside tables is fostered to parent; implicit <p> close before block elements; table end tags properly close the table context
 - [x] ~~Fix unclosed tag handling~~ (2026-04-03 sprint partial) — generic end tag now pops stack until matching tag found; unknown end tags are skipped without crashing; block tags implicitly close open <p> tags
 - [x] ~~Implement entity decoding~~ (2026-04-03 sprint) — added decodeEntities() with named entities (amp, lt, gt, quot, apos, nbsp, ndash, mdash, lsquo, rsquo, ldquo, rdquo, hellip, copy, reg, trade, deg, plusmn, times, divide, frac12, frac14, frac34) and numeric entities (&#65;, &#x41;)
-- [ ] **Implement foreign content handling** — `<svg>` and `<math>` have special nested tokenization rules
+- [x] ~~Implement foreign content handling~~ (2026-04-04 sprint) — svg/math tracked via foreignContent counter; HTML-specific rules (p-closing, foster parenting) disabled inside foreign content; end tags only pop matching element in foreign context; bootstrap stack corrected to include head+body so elements append to body not html
 
 ## 🟡 High (Layout/Rendering)
 
