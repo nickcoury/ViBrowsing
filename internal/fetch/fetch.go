@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // Response holds the result of a fetch operation.
@@ -19,7 +20,8 @@ type Response struct {
 
 // Fetch retrieves a URL, following up to maxRedirects redirects.
 // Supports http://, https://, and file:// URLs.
-func Fetch(rawURL string, maxRedirects int) (*Response, error) {
+// userAgent overrides the default User-Agent. timeout is in seconds.
+func Fetch(rawURL string, userAgent string, timeoutSecs int) (*Response, error) {
 	// Handle file:// URLs
 	if strings.HasPrefix(rawURL, "file://") {
 		path := rawURL[7:]
@@ -52,17 +54,28 @@ func Fetch(rawURL string, maxRedirects int) (*Response, error) {
 	currentURL := parsedURL.String()
 	var lastErr error
 
-	for i := 0; i <= maxRedirects; i++ {
+	client := &http.Client{
+		Timeout: time.Duration(timeoutSecs) * time.Second,
+	}
+	if timeoutSecs <= 0 {
+		client.Timeout = 30 * time.Second
+	}
+
+	for i := 0; i <= 10; i++ {
 		req, err := http.NewRequest("GET", currentURL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
-		req.Header.Set("User-Agent", "HallucinHTML/1.0 (+https://github.com/nickcoury/ViBrowsing)")
+		ua := userAgent
+		if ua == "" {
+			ua = "HallucinHTML/1.0 (+https://github.com/nickcoury/ViBrowsing)"
+		}
+		req.Header.Set("User-Agent", ua)
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("request failed: %w", err)
+			return nil, fmt.Errorf("request failed (timeout=%ds): %w", timeoutSecs, err)
 		}
 
 		body, err := io.ReadAll(resp.Body)

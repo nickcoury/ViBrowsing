@@ -3,7 +3,7 @@
 ## 🔴 Critical (Parser/Rendering)
 
 - [x] ~~Fix HTML parser double-html/body bug~~ (2026-04-03 sprint) — tokenizer now skips html/head/body StartTag/EndTag tokens; parser bootstraps them once cleanly; no more duplication
-- [ ] **Fix foster parenting** — when </table> closes a table, unclosed `<tr>`/`<td>` children should be moved to the table's parent, not silently dropped
+- [x] ~~Fix foster parenting~~ (2026-04-03 sprint) — parser now tracks table context, text inside tables is fostered to parent; implicit <p> close before block elements; table end tags properly close the table context
 - [ ] **Fix unclosed tag handling** — when encountering a closing tag with no matching open tag, don't silently drop the close. Compare behavior against html5lib reference
 - [x] ~~Implement entity decoding~~ (2026-04-03 sprint) — added decodeEntities() with named entities (amp, lt, gt, quot, apos, nbsp, ndash, mdash, lsquo, rsquo, ldquo, rdquo, hellip, copy, reg, trade, deg, plusmn, times, divide, frac12, frac14, frac34) and numeric entities (&#65;, &#x41;)
 - [ ] **Implement foreign content handling** — `<svg>` and `<math>` have special nested tokenization rules
@@ -177,22 +177,22 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🟠 Low (Developer Experience)
 
-- [ ] **Add verbose/debug logging flag** — `browser --debug` to print DOM tree, layout boxes, CSS cascade steps
-- [ ] **Add `--profile` flag** — output timing profile (CPU/memory) for parse + layout + render phases
-- [ ] **Add `--dump-dom` flag** — output the parsed DOM tree as indented text to stdout
-- [ ] **Add `--dump-layout` flag** — output the layout box tree as indented text to stdout
+- [x] ~~Add verbose/debug logging flag~~ (2026-04-03 sprint) — `browser --debug` enables verbose output during fetch/parse/render
+- [x] ~~Add `--profile` flag~~ — output timing profile (CPU/memory) for parse + layout + render phases
+- [x] ~~Add `--dump-dom` flag~~ (2026-04-03 sprint) — added --dump-dom flag to browser CLI
+- [x] ~~Add `--dump-layout` flag~~ (2026-04-03 sprint) — added --dump-layout flag with Box.String() method on layout tree
 - [ ] **Add `--benchmark` flag** — run parse+layout+render N times and print timing stats
-- [ ] **Add `--viewport` flag** — set window size (e.g. `--viewport=1280x720` or `--viewport=375x667` for mobile)
-- [ ] **Add `--user-agent` flag** — set User-Agent header for fetch
+- [x] ~~Add `--viewport` flag~~ (2026-04-03 sprint) — added --viewport WxH flag (e.g. 375x667)
+- [x] ~~Add `--user-agent` flag~~ (2026-04-03 sprint) — added --user-agent flag to set HTTP User-Agent header
 - [ ] **Colorize terminal output** — use ANSI colors for DOM/tree dumps in debug mode
 - [ ] **TUI devtools panel** — ncurses-based panel alongside browser showing DOM tree, style computed values, network requests
-- [ ] **Show file:// URL support** — `browser file:///path/to/page.html` for local testing
+- [x] ~~Show file:// URL support~~ (2026-04-03 sprint) — browser already handles local file paths, auto-prefixes with file://
 
 ## 🟡 Medium (Error Handling & Robustness)
 
 - [ ] **Handle malformed URLs gracefully** — show error page instead of panic on bad URL
-- [ ] **Handle fetch timeouts** — configurable timeout for network requests, show error page on timeout
-- [ ] **Handle HTTP errors** — 4xx/5xx responses should show error page, not crash
+- [x] ~~Handle fetch timeouts~~ (2026-04-03 sprint) — fetch.Fetch() now uses configurable timeout via HTTP client; default 30s, wired to --user-agent flag
+- [x] ~~Handle HTTP errors~~ (2026-04-03 sprint) — HTTP error codes now print error and exit cleanly
 - [ ] **Handle binary/non-text content** — if server returns image/binary for HTML content-type, don't try to parse as HTML
 - [ ] **Handle very large pages** — pages > 10MB should be truncated or streaming-parsed, not loaded entirely into memory
 - [ ] **Handle deeply nested DOM** — pages with >10,000 levels of nesting shouldn't stack overflow in recursive layout
@@ -264,3 +264,99 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page
 - [ ] **Implement zoom** — Ctrl+/Ctrl- for page zoom (CSS transforms or viewport scaling)
 - [ ] **Implement focus ring** — visible focus indicator on interactive elements for keyboard navigation
+
+---
+
+## 🟠 Low (Networking & Protocol)
+
+- [ ] **Implement HTTP/1.1 keep-alive** — reuse TCP connections for multiple requests to same origin
+- [ ] **Implement HTTP/2 support** — upgrade to HTTP/2 for multiplexed requests
+- [ ] **Implement TLS certificate verification** — proper HTTPS with certificate validation
+- [ ] **Implement DNS resolution caching** — cache resolved IPs to avoid repeated DNS lookups
+- [ ] **Implement connection timeout** — max time to establish TCP connection
+- [ ] **Implement read/write timeouts** — prevent hanging on slow connections
+- [ ] **Implement retry on connection reset** — automatically retry on transient failures
+- [ ] **Implement conditional GET (If-Modified-Since)** — send Last-Modified header, handle 304 Not Modified
+- [ ] **Implement Content-Encoding** — handle gzip/deflate/br content encoding from servers
+- [ ] **Implement streaming fetch** — for large pages, stream HTML as it's received rather than buffering all
+
+## 🟠 Low (Internationalization & i18n)
+
+- [ ] **Implement UTF-8 charset detection** — from HTTP Content-Type and `<meta charset>`
+- [ ] **Implement `<meta http-equiv="Content-Type">` charset** — legacy charset declaration
+- [ ] **Implement `<meta charset="UTF-8">`** — HTML5 charset declaration
+- [ ] **Implement CSS `lang` attribute selector** — `:lang(en)` pseudo-class
+- [ ] **Implement HTML `lang` attribute** — `<html lang="en">` for accessibility
+- [ ] **Implement `<bdo dir="rtl">`** — right-to-left text override
+- [ ] **Implement emoji rendering** — proper emoji display (color emoji fonts)
+- [ ] **Implement `Accept-Language` header** — send preferred languages to servers
+- [ ] **Implement number formatting per locale** — for Arabic/Hindic numerials
+
+## 🟠 Low (Print & Export)
+
+- [ ] **Implement `@media print`** — apply print-specific stylesheet rules
+- [ ] **Implement print styles** — hide navigation, expand hidden sections, optimize for paper
+- [ ] **Implement PDF export** — render page to PDF using go's pdf libraries or command-line tools
+- [ ] **Implement SVG export** — save rendered output as SVG vector format
+- [ ] **Implement screenshot of specific element** — `dom.toImage()` or screenshot a div
+- [ ] **Implement `window.print()`** — trigger print dialog with current page
+
+## 🟡 Medium (Additional CSS Features)
+
+- [ ] **Implement CSS `clip`** — legacy clipping (replaced by clip-path)
+- [ ] **Implement CSS `clip-path: polygon()`** — complex polygon clipping shapes
+- [ ] **Implement CSS `mask-image`** — image masking
+- [ ] **Implement CSS `backdrop-filter`** — blur behind fixed-position elements
+- [ ] **Implement CSS `filter`** — blur, brightness, contrast, grayscale, sepia on elements
+- [ ] **Implement CSS `object-fit`** — how img/video fill their container
+- [ ] **Implement CSS `object-position`** — positioning of replaced content
+- [ ] **Implement CSS `aspect-ratio`** — forced aspect ratio on boxes
+- [ ] **Implement CSS `column-width` and `column-count`** — multi-column layout
+- [ ] **Implement CSS `column-gap`, `column-rule`** — column spacing and dividers
+- [ ] **Implement CSS `break-inside`, `break-before`, `break-after`** — pagination control
+- [ ] **Implement CSS `page-break-*`** — print pagination
+
+## 🟡 Medium (Advanced DOM APIs)
+
+- [ ] **Implement `querySelector()`** — CSS selector-based element lookup
+- [ ] **Implement `querySelectorAll()`** — return all matching elements
+- [ ] **Implement `getElementById()`** — fast ID-based lookup with index
+- [ ] **Implement `getElementsByClassName()`** — class-based element collection
+- [ ] **Implement `getElementsByTagName()`** — tag-based element collection
+- [ ] **Implement `innerHTML`** — get/set inner HTML of elements
+- [ ] **Implement `outerHTML`** — get/set outer HTML of elements
+- [ ] **Implement `textContent`** — get/set text content of elements
+- [ ] **Implement `innerText`** — get/set rendered text (like textContent but CSS-aware)
+- [ ] **Implement `createElement()`** — DOM API for creating elements
+- [ ] **Implement `createTextNode()`** — DOM API for creating text nodes
+- [ ] **Implement `appendChild()`** — DOM API (may already exist)
+- [ ] **Implement `removeChild()`** — DOM API to remove nodes
+- [ ] **Implement `insertBefore()`** — DOM API to insert before reference node
+- [ ] **Implement `classList` API** — add/remove/toggle/contains CSS classes
+- [ ] **Implement `getAttribute()` / `setAttribute()`** — attribute access
+- [ ] **Implement `style` property** — inline style get/set
+- [ ] **Implement `dataset` property** — `data-*` attribute access
+
+## 🟠 Low (Testing & QA)
+
+- [ ] **Property-based fuzzing** — use go-fuzz to generate random HTML/CSS combinations
+- [ ] **Regression test suite** — save known-good outputs for each sample page, diff on change
+- [ ] **Parse error recovery tests** — malformed HTML should not crash, should produce best-effort DOM
+- [ ] **Unicode boundary tests** — emoji, combining characters, RTL, surrogate pairs
+- [ ] **Very large document test** — 10MB+ HTML file should parse without OOM or timeout
+- [ ] **Deeply nested document test** — 10,000 levels of nesting should not stack overflow
+- [ ] **Memory leak tests** — run parse 1000 times, ensure memory doesn't grow unbounded
+- [ ] **Performance regression CI** — fail build if parse+layout time increases >10% vs baseline
+
+## 🟡 Medium (Code Quality)
+
+- [ ] **Extract CSS parser into own package** — `internal/css/parser.go` from layout
+- [ ] **Extract layout engine into own package** — `internal/layout/box.go` from render
+- [ ] **Add package-level documentation** — godoc for each internal package
+- [ ] **Add inline comments for complex algorithms** — foster parenting, float algorithm, etc
+- [ ] **Add benchmarking to `html.Parse()`** — measure and log parse time
+- [ ] **Add benchmarking to layout** — measure box tree construction time
+- [ ] **Profile with pprof** — identify CPU and memory bottlenecks
+- [ ] **Reduce string allocations in tokenizer** — use []byte/[]rune pooling
+- [ ] **Use sync.Pool for Node allocation** — reduce GC pressure in hot path
+- [ ] **Add error type hierarchy** — `ParseError`, `FetchError`, `LayoutError` with stack traces

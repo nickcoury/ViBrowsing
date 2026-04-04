@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
@@ -12,29 +14,66 @@ import (
 	"github.com/nickcoury/ViBrowsing/internal/render"
 )
 
+var (
+	flagDumpDOM    = flag.Bool("dump-dom", false, "Print the parsed DOM tree to stdout")
+	flagDumpLayout = flag.Bool("dump-layout", false, "Print the layout box tree to stdout")
+	flagViewport   = flag.String("viewport", "800x600", "Viewport size as WxH (e.g. 375x667)")
+	flagDebug      = flag.Bool("debug", false, "Enable verbose debug output")
+	flagUserAgent  = flag.String("user-agent", "", "Set the User-Agent header")
+	flagOutput     = flag.String("output", "output.png", "Output file path")
+)
+
 func main() {
+	flag.Parse()
+
+	args := flag.Args()
 	url := "https://example.com"
-	if len(os.Args) > 1 {
-		url = os.Args[1]
+	if len(args) > 0 {
+		url = args[0]
 		// If it looks like a local file path, prefix with file://
 		if _, err := os.Stat(url); err == nil && !strings.HasPrefix(url, "http") {
 			url = "file://" + url
 		}
 	}
 
-	fmt.Printf("ViBrowsing fetching: %s\n", url)
+	// Parse viewport
+	viewportW, viewportH := 800, 600
+	if v := *flagViewport; v != "" {
+		parts := strings.Split(v, "x")
+		if len(parts) == 2 {
+			if w, err := strconv.Atoi(parts[0]); err == nil {
+				viewportW = w
+			}
+			if h, err := strconv.Atoi(parts[1]); err == nil {
+				viewportH = h
+			}
+		}
+	}
+
+	if *flagDebug {
+		fmt.Printf("ViBrowsing fetching: %s\n", url)
+	}
 
 	// Fetch the page
-	resp, err := fetch.Fetch(url, 5)
+	resp, err := fetch.Fetch(url, *flagUserAgent, 10)
 	if err != nil {
 		fmt.Printf("Fetch error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Fetched: %d bytes, Content-Type: %s\n", len(resp.Body), resp.ContentType)
+	if resp.StatusCode >= 400 {
+		fmt.Printf("HTTP error: %d %s\n", resp.StatusCode, resp.FinalURL)
+		os.Exit(1)
+	}
+	if *flagDebug {
+		fmt.Printf("Fetched: %d bytes, Content-Type: %s\n", len(resp.Body), resp.ContentType)
+	}
 
 	// Build DOM tree
 	dom := html.Parse(resp.Body)
-	fmt.Printf("DOM tree:\n%s\n", dom.String())
+
+	if *flagDumpDOM {
+		fmt.Printf("DOM tree:\n%s\n", dom.String())
+	}
 
 	// Find stylesheets
 	var cssRules []css.Rule
@@ -56,9 +95,11 @@ func main() {
 	}
 
 	// Layout the page
-	viewportW := 800
-	viewportH := 600
 	layout.LayoutBlock(layoutBox, float64(viewportW))
+
+	if *flagDumpLayout {
+		fmt.Printf("Layout tree:\n%s\n", layoutBox.String())
+	}
 
 	// Render to canvas
 	canvas := render.NewCanvas(viewportW, viewportH)
@@ -66,13 +107,15 @@ func main() {
 	canvas.DrawBox(layoutBox)
 
 	// Save as PNG
-	outputFile := "output.png"
+	outputFile := *flagOutput
 	if err := canvas.SavePNG(outputFile); err != nil {
 		fmt.Printf("Failed to save PNG: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Rendered to %s\n", outputFile)
+	if *flagDebug {
+		fmt.Printf("Rendered to %s\n", outputFile)
+	}
 
 	// Also print extracted text as sanity check
 	body := dom.QuerySelectorAll("body")

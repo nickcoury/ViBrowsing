@@ -1,6 +1,8 @@
 package layout
 
 import (
+	"fmt"
+
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/html"
 )
@@ -196,4 +198,44 @@ func buildBox(node *html.Node, rules []css.Rule, depth int) *Box {
 	}
 
 	return box
+}
+
+// String returns a formatted string representation of the layout tree.
+func (b *Box) String() string {
+	return b.stringWithIndent(0)
+}
+
+func (b *Box) stringWithIndent(indent int) string {
+	prefix := ""
+	for i := 0; i < indent; i++ {
+		prefix += "  "
+	}
+
+	var tagName string
+	if b.Node != nil {
+		tagName = b.Node.TagName
+	} else {
+		tagName = "(root)"
+	}
+
+	var boxType string
+	switch b.Type {
+	case BlockBox:
+		boxType = "block"
+	case InlineBox:
+		boxType = "inline"
+	case InlineBlock:
+		boxType = "inline-block"
+	case TextBox:
+		boxType = "text"
+	}
+
+	s := prefix + fmt.Sprintf("[%s] %s (%.0fx%.0f at (%.0f,%.0f))\n",
+		boxType, tagName, b.ContentW, b.ContentH, b.ContentX, b.ContentY)
+
+	for _, child := range b.Children {
+		s += child.stringWithIndent(indent + 1)
+	}
+
+	return s
 }
