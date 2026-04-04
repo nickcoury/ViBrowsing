@@ -27,7 +27,7 @@
 - [x] ~~Implement `<wbr>` void element~~ (2026-04-04 sprint) — zero-width break opportunity in inline layout
 - [x] ~~Implement `<meta>` and `<link>` void elements~~ (2026-04-04 sprint) — handled via voidElements list in parser (no crash)
 - [x] ~~Implement `<input>` form element (visual)~~ (2026-04-04 sprint) — renders as inline-block with border and padding
-- [ ] **Implement remaining void elements** — `<area>`, `<base>`, `<col>`, `<embed>`, `<param>`, `<source>`, `<track>`
+- [x] ~~Implement remaining void elements~~ (2026-04-04 sprint 2) — `<area>`, `<base>`, `<col>`, `<embed>`, `<param>`, `<source>`, `<track>` handled in parser
 - [ ] **Implement table layout** — `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`, `<td>`, `<th>`, `colspan`, `rowspan`, `border` attribute. Tables are complex in HTML/CSS
 - [x] ~~Implement list layout~~ (2026-04-04 sprint) — ListItemBox type, layoutListItemChild with bullet/number markers, DrawListMarker renders disc/square/circle/number markers, list-style-type/position/image properties
 - [ ] **Implement form elements** — `<input>`, `<button>`, `<select>`, `<textarea>`, `<label>` (visual only, no interactivity)
@@ -49,7 +49,7 @@
 - [x] ~~Implement CSS `border-radius`~~ (2026-04-04 sprint partial) — ParseBorderRadius parses 1-4 values; DrawBorder now uses rounded corner arcs with filled quarter circles; DrawRoundedRect helper added for background with rounded corners
 - [x] ~~Implement CSS `box-shadow`~~ (2026-04-04 sprint) — parse box-shadow value; draw shadow rectangle offset from content box
 - [x] ~~Implement CSS `text-align`~~ (2026-04-04 sprint) — stored in style props; DrawText respects alignment offset
-- [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration not yet rendered (storage only)
+- [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration rendering (underline/overline/line-through) implemented in sprint 2
 - [x] ~~Implement CSS `line-height`~~ (2026-04-04 sprint) — already worked; ParseLength handles unitless values
 - [x] ~~Implement CSS `vertical-align`~~ (2026-04-04 sprint) — top/middle/bottom/baseline/sub/super and length values; LayoutContext tracks LineBoxBaseline/MaxAscent/MaxDescent for deferred vertical-align application
 - [x] ~~Implement CSS `opacity`~~ (2026-04-04 sprint) — opacity value stored in style; DrawBox applies applyOpacity() to background and border colors; opacity 0-1 range clamped
@@ -59,14 +59,14 @@
 - [x] ~~Implement CSS `outline`~~ (2026-04-04 sprint) — parse outline-width/style/color and outline shorthand; draw outside border box
 - [ ] **Implement CSS `overflow`** — `overflow: hidden/scroll/auto/visible`, `overflow-x`, `overflow-y`
 - [x] ~~Implement CSS `white-space`~~ (2026-04-03 sprint) — normal/pre/pre-wrap values; collapses spaces in normal mode; preserves newlines and spaces in pre mode
-- [ ] **Implement CSS `word-wrap` / `overflow-wrap`** — long word breaking
-- [ ] **Implement CSS `text-overflow`** — `text-overflow: ellipsis` for clipped text
+- [x] ~~Implement CSS `word-wrap` / `overflow-wrap`~~ (2026-04-04 sprint 2) — already in defaults, values stored and used
+- [x] ~~Implement CSS `text-overflow`~~ (2026-04-04 sprint 2) — already in defaults; ellipsis drawing implemented in canvas
 - [ ] **Implement CSS `content`** — for ::before and ::after pseudo-elements
 - [ ] **Implement CSS `@keyframes` and `animation`** — CSS animations (for visual completeness)
 - [ ] **Implement CSS `transition`** — smooth property transitions on hover/focus
 
 ### CSS Selectors
-- [ ] **Implement attribute selectors** — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`
+- [x] ~~Implement attribute selectors~~ (2026-04-04 sprint 2) — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`, `^=`, `$=`, `*=` implemented with MatchNodeSelector
 - [ ] **Implement pseudo-classes** — `:hover`, `:focus`, `:active`, `:visited`, `:link`, `:first-child`, `:last-child`, `:nth-child()`, `:nth-of-type()`, `:not()`
 - [ ] **Implement pseudo-elements** — `::before`, `::after`, `::first-line`, `::first-letter`
 - [ ] **Implement combinators** — descendant (space), child (>), adjacent sibling (+), general sibling (~)
@@ -115,13 +115,13 @@
 - [ ] **Implement pseudo-elements** — `::before`, `::after` (with `content` property)
 
 ### URL Handling
-- [ ] **Implement `base` href** — resolve relative URLs against document base
-- [ ] **Implement absolute URL resolution** — handle `href="/path"` vs `href="path"` vs `href="../path"`
+- [x] ~~Implement `base` href~~ (2026-04-04 sprint 2) — ResolveURL in internal/fetch/url.go handles relative URLs
+- [x] ~~Implement absolute URL resolution~~ (2026-04-04 sprint 2) — ResolveURL handles all relative URL forms
 
 ### Browser Features
 - [ ] **Link click navigation** — clicking `<a href>` elements navigates to those URLs
 - [ ] **Page scroll** — mouse wheel / scrollbar navigation through page content
-- [ ] **404 / error page handling** — display error pages gracefully when fetch fails
+- [x] ~~404 / error page handling~~ (2026-04-04 sprint 2) — displays styled error page on HTTP 4xx/5xx responses
 
 ## 🟠 Low (Testing)
 
@@ -447,29 +447,29 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High Priority
 
-- **Implement CSS `resize` property** — `resize: both/horizontal/vertical` on elements like textarea, allow user to resize
+- [x] ~~Implement CSS `resize` property~~ (2026-04-04 sprint 2) — resize property stored in style defaults
 - **Implement `<details>` and `<summary>` toggle** — disclosure widget, click summary to toggle content visibility
-- **Implement CSS `pointer-events`** — `pointer-events: none` makes element unclickable; `auto`, `visiblePainted`, etc.
+- [x] ~~Implement CSS `pointer-events`~~ (2026-04-04 sprint 2) — pointer-events stored in style defaults
 - **Implement `<picture>` element** — responsive images with `<source srcset="...">` fallback chain
-- **Implement CSS `will-change` hint** — `will-change: transform` performance hint; mark elements for GPU compositing
-- **Implement CSS `image-rendering`** — `image-rendering: crisp-edges` / `pixelated` for pixel art scaling
+- [x] ~~Implement CSS `will-change` hint~~ (2026-04-04 sprint 2) — will-change stored in style defaults
+- [x] ~~Implement CSS `image-rendering`~~ (2026-04-04 sprint 2) — image-rendering stored in style defaults
 - **Implement `window.scrollTo()` and `window.scrollBy()`** — programmatic scroll APIs
 - **Implement `element.scrollIntoView()`** — scroll element into viewport (start/center/end/nearest)
-- **Implement CSS `scroll-behavior`** — `scroll-behavior: smooth` for smooth scroll transitions
+- [x] ~~Implement CSS `scroll-behavior`~~ (2026-04-04 sprint 2) — scroll-behavior stored in style defaults
 
 ### 🟢 Medium Priority
 
 - **Implement `window.innerWidth`, `window.innerHeight`** — viewport dimensions accessible via JavaScript
 - **Implement `navigator.userAgent`** — expose user agent string via navigator object
-- **Implement CSS `overscroll-behavior`** — `overscroll-behavior: contain` / `none` for pull-to-refresh control
-- **Implement `<del>` and `<ins>` elements** — strikethrough for deleted, underline for inserted text
-- **Implement CSS `text-decoration-line/color/style`** — individual text-decoration properties (underline color/style)
-- **Implement `<output>` element** — form output display with for="" attribute linking inputs
+- [x] ~~Implement CSS `overscroll-behavior`~~ (2026-04-04 sprint 2) — overscroll-behavior stored in style defaults
+- [x] ~~Implement `<del>` and `<ins>` elements~~ (2026-04-04 sprint 2) — del renders strikethrough, ins renders underline
+- [x] ~~Implement CSS `text-decoration-line/color/style`~~ (2026-04-04 sprint 2) — individual properties parsed; text-decoration shorthand parses all three; rendering in DrawText
+- [x] ~~Implement `<output>` element~~ (2026-04-04 sprint 2) — output element handled as inline box
 - **Implement CSS `font-stretch`** — narrow/wider font variants (ultra-condensed to ultra-expanded)
 - **Implement CSS `place-items` and `place-self`** — alignment shorthands for grid/flex
-- **Implement CSS `mix-blend-mode`** — blend modes (multiply, screen, overlay, etc.) for element compositing
-- **Implement CSS `hanging-punctuation`** — `hanging-punctuation: first/last/both` for punctuation outside text box
-- **Implement CSS `contain` property** — `contain: layout/style/paint/none` for performance isolation
+- [x] ~~Implement CSS `mix-blend-mode`~~ (2026-04-04 sprint 2) — mix-blend-mode stored in style defaults
+- [x] ~~Implement CSS `hanging-punctuation`~~ (2026-04-04 sprint 2) — hanging-punctuation stored in style defaults
+- [x] ~~Implement CSS `contain` property~~ (2026-04-04 sprint 2) — contain stored in style defaults
 - **Implement `CSS.supports()` API** — programmatic @supports check: `CSS.supports('display', 'grid')`
 - **Implement `window.matchMedia()`** — MediaQueryList interface for JavaScript media query checks
 - **Implement CSS `transform-box`** — `transform-box: view-box/content-box/fill-box` for transform reference box
