@@ -341,12 +341,25 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 			}
 
 			// Wrap line if needed (not in pre mode)
+			wordWrap := box.Style["word-wrap"]
+			overflowWrap := box.Style["overflow-wrap"]
 			canWrap := !isPre
+			// word-wrap: break-word allows breaking even without hyphens/spaces
+			canBreakWord := wordWrap == "break-word" || overflowWrap == "break-word"
+
 			if canWrap && x+cw > contentWidth && x > ctx.X {
 				x = ctx.X
 				ctx.Y += lineHeightPx
 				wrapPrevWord = false
 				// Skip space at start of new line (normal mode)
+				if c == ' ' {
+					continue
+				}
+			} else if canBreakWord && x+cw > contentWidth && x > ctx.X {
+				// Break long word without spaces
+				x = ctx.X
+				ctx.Y += lineHeightPx
+				wrapPrevWord = false
 				if c == ' ' {
 					continue
 				}
