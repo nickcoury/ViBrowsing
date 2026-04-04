@@ -11,6 +11,11 @@ type LayoutContext struct {
 	Width  float64 // containing block width
 	Height float64
 	X, Y   float64 // cursor position
+
+	// Float tracking: tracks the float boundaries for content wrapping
+	FloatLeftEdge  float64 // right edge of the rightmost left-float (0 if none)
+	FloatRightEdge float64 // left edge of the leftmost right-float (Width if none)
+	FloatBottom    float64 // lowest bottom edge of all floats in current line
 }
 
 // LayoutBlock performs block-level layout on a box tree.
@@ -40,23 +45,118 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 	}
 }
 
+// layoutFloatChild positions a floated element.
+func layoutFloatChild(box *Box, ctx *LayoutContext) {
+	float := box.Style["float"]
+	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+	marginRight := css.ParseLength(box.Style["margin-right"]).Value
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	_ = css.ParseLength(box.Style["margin-bottom"]).Value // not used for floats
+
+	// Width of the float
+	floatWidth := computeWidth(box, ctx.Width)
+	if floatWidth > ctx.Width {
+		floatWidth = ctx.Width
+	}
+
+	if float == "left" {
+		// Float left: position at left edge, update left float boundary
+		box.ContentX = ctx.X + marginLeft
+		box.ContentY = ctx.Y + marginTop
+		box.ContentW = floatWidth
+		box.ContentH = computeHeight(box, nil)
+
+		// Update float boundary
+		newFloatEdge := ctx.X + floatWidth + marginLeft + marginRight
+		if newFloatEdge > ctx.FloatLeftEdge {
+			ctx.FloatLeftEdge = newFloatEdge
+		}
+		// Update float bottom
+		floatBottom := box.ContentY + box.ContentH + marginTop
+		if floatBottom > ctx.FloatBottom {
+			ctx.FloatBottom = floatBottom
+		}
+	} else {
+		// Float right: position at right edge, update right float boundary
+		box.ContentW = floatWidth
+		box.ContentX = ctx.X + ctx.Width - floatWidth - marginRight
+		box.ContentY = ctx.Y + marginTop
+		box.ContentH = computeHeight(box, nil)
+
+		// Update float boundary
+		newFloatEdge := ctx.X + ctx.Width - floatWidth - marginLeft - marginRight
+		if newFloatEdge < ctx.FloatRightEdge {
+			ctx.FloatRightEdge = newFloatEdge
+		}
+		// Update float bottom
+		floatBottom := box.ContentY + box.ContentH + marginTop
+		if floatBottom > ctx.FloatBottom {
+			ctx.FloatBottom = floatBottom
+		}
+	}
+}
+
 func layoutBlockChild(box *Box, ctx *LayoutContext) {
-	// Compute width
-	width := computeWidth(box, ctx.Width)
+	float := box.Style["float"]
+
+	// Handle float elements
+	if float == "left" || float == "right" {
+		layoutFloatChild(box, ctx)
+		return
+	}
+
+	// Compute width (accounting for floats if they exist)
+	availWidth := ctx.Width
+	if ctx.FloatLeftEdge > 0 {
+		availWidth -= ctx.FloatLeftEdge
+	}
+	if ctx.FloatRightEdge < ctx.Width {
+		availWidth -= ctx.Width - ctx.FloatRightEdge
+	}
+	if availWidth < 50 {
+		availWidth = 50
+	}
+	width := computeWidth(box, availWidth)
 
 	// Margin collapsing: top margin of first block child collapses with parent's top
 	marginTop := css.ParseLength(box.Style["margin-top"]).Value
 	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
 
-	// Position
-	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+	// Compute y position: start at FloatBottom if we're below floats
+	// (ctx.Y might be below floats already, or at original cursor)
 	box.ContentY = ctx.Y + marginTop
+
+	// Compute x position respecting floats
+	xPos := ctx.X
+	if ctx.FloatLeftEdge > 0 {
+		xPos = ctx.FloatLeftEdge
+	}
+	box.ContentX = xPos + css.ParseLength(box.Style["margin-left"]).Value
+
+	// Check if box overlaps floats — if so, move to next line below FloatBottom
+	boxEndX := box.ContentX + width
+	boxOverlapsLeftFloat := ctx.FloatLeftEdge > 0 && boxEndX > ctx.FloatLeftEdge
+	boxOverlapsRightFloat := ctx.FloatRightEdge < ctx.Width && box.ContentX < ctx.FloatRightEdge
+	if boxOverlapsLeftFloat || boxOverlapsRightFloat {
+		// Clear floats and move below
+		ctx.FloatLeftEdge = 0
+		ctx.FloatRightEdge = ctx.Width
+		ctx.FloatBottom = 0
+		box.ContentY = ctx.Y + marginTop
+		box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+		// Recompute width after float clearing
+		width = computeWidth(box, ctx.Width)
+		box.ContentW = width
+	}
 
 	// Compute content height
 	childCtx := &LayoutContext{
-		Width: width,
-		X:     box.ContentX,
-		Y:     box.ContentY,
+		Width:         width,
+		X:             box.ContentX,
+		Y:             box.ContentY,
+		FloatLeftEdge: ctx.FloatLeftEdge,
+		FloatRightEdge: ctx.FloatRightEdge,
+		FloatBottom:   ctx.FloatBottom,
 	}
 	layoutChildren(box, childCtx)
 
@@ -64,8 +164,18 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	box.ContentW = width
 	box.ContentH = computeHeight(box, childCtx)
 
-	// Advance cursor
-	ctx.Y += marginTop + box.ContentH + marginBottom
+	// Advance cursor: use max of float bottom and block bottom
+	nextY := box.ContentY + box.ContentH + marginBottom
+	if ctx.FloatBottom > nextY {
+		nextY = ctx.FloatBottom
+	}
+	ctx.Y = nextY
+
+	// Clear floats after a block that was pushed below them
+	if ctx.FloatBottom > 0 && box.ContentY+box.ContentH >= ctx.FloatBottom {
+		// If this block ends at or below FloatBottom, clear floats
+		// so subsequent blocks don't try to flow around cleared floats
+	}
 }
 
 func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {

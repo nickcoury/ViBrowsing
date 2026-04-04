@@ -13,7 +13,7 @@
 - [x] ~~Implement CSS box model properly~~ (2026-04-03 sprint) — TotalWidth/TotalHeight now use Box fields; canvas draws margin/background/padding/border in correct order with proper geometry
 - [x] ~~Implement flexbox layout~~ (2026-04-03 sprint) — added FlexBox type, flex-direction (row/column/reverse), justify-content, align-items, align-self, flex-grow, flex-basis, gap CSS properties
 - [x] ~~Implement inline layout~~ (2026-04-03 sprint) — text wraps at container width; white-space:normal collapses whitespace, pre/pre-wrap preserves it; text boxes inherit parent style including white-space; explicit newline handling in pre mode
-- [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it
+- [x] ~~Implement float~~ (2026-04-04 sprint) — float:left/right with LayoutContext.FloatLeftEdge/FloatRightEdge/FloatBottom tracking; blocks below float edge clear floats and reflow below
 - [x] ~~Implement positioned layout~~ (2026-04-03 sprint) — position:absolute/relative/fixed with top/left offsets; positioned elements use PositionedBox type; fixed uses viewport as containing block
 - [x] ~~Implement z-index stacking~~ (2026-04-03 sprint) — children sorted by z-index before drawing; positioned elements drawn after normal flow; z-index parsed as integer
 - [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — visibility:hidden now paints background/border/padding but hides content and children; display:none skips box entirely
@@ -65,8 +65,8 @@
 ### CSS Layout
 - [ ] **Implement flexbox fully** — `display: flex`, `flex-direction`, `flex-wrap`, `flex-flow`, `justify-content`, `align-items`, `align-content`, `gap`, `flex-grow`, `flex-shrink`, `flex-basis`, `order`
 - [ ] **Implement CSS grid** — `display: grid`, `grid-template-columns`, `grid-template-rows`, `grid-column`, `grid-row`, `gap`, `span`
-- [ ] **Implement float** — `float: left/right` with wrap-around content
-- [ ] **Implement `display` values** — `display: block/inline/inline-block/none/grid/flex`
+- [x] ~~Implement float~~ (2026-04-04 sprint) — float:left/right with wrap-around content
+- [x] ~~Implement `display` values~~ (2026-04-03 sprint partial) — display:block/inline/none/flex handled; inline-block/grid not yet implemented
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed/sticky` with `top/left/right/bottom` offsets. Stacking context with z-index
 - [ ] **Implement `visibility: hidden` and `display: none`** — hidden elements (visibility: hidden) occupy space; display:none removed from layout entirely
 - [ ] **Implement `position: fixed`** — viewport-locked positioning (header bars, modals)
@@ -89,6 +89,30 @@
 - [ ] **PNG output** — save rendered output to file (partially working)
 - [ ] **PDF output** — render page to PDF document
 - [ ] **Window management** — resize, fullscreen, multiple windows, tabs
+
+## 🟡 High (HTML/CSS Coverage)
+
+### Missing CSS properties
+- [ ] **Implement `background` shorthand** — `background: #fff url(img.png) no-repeat center top` with color, image, repeat, position, size
+- [ ] **Implement `border-radius`** — rounded corners on boxes, including per-corner (`border-radius: 10px 5px 10px 5px`)
+- [ ] **Implement `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
+- [ ] **Implement `outline`** — focus ring around elements (like border but doesn't affect layout)
+- [ ] **Implement `transform`** — rotate, scale, translate (2D transforms)
+- [ ] **Implement `letter-spacing`, `word-spacing`, `text-indent`, `text-transform`** — stored but not rendered (char width adjustments, text case conversion)
+
+### Missing CSS Selectors
+- [ ] **Implement attribute selectors** — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`
+- [ ] **Implement pseudo-classes** — `:hover`, `:focus`, `:active`, `:first-child`, `:last-child`, `:nth-child()`
+- [ ] **Implement pseudo-elements** — `::before`, `::after` (with `content` property)
+
+### URL Handling
+- [ ] **Implement `base` href** — resolve relative URLs against document base
+- [ ] **Implement absolute URL resolution** — handle `href="/path"` vs `href="path"` vs `href="../path"`
+
+### Browser Features
+- [ ] **Link click navigation** — clicking `<a href>` elements navigates to those URLs
+- [ ] **Page scroll** — mouse wheel / scrollbar navigation through page content
+- [ ] **404 / error page handling** — display error pages gracefully when fetch fails
 
 ## 🟠 Low (Testing)
 
