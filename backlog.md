@@ -17,7 +17,7 @@
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed` with `top/left/right/bottom` offsets
 - [ ] **Implement z-index stacking** — elements stack in layers, `z-index` controls stacking order
 - [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — visibility:hidden now paints background/border/padding but hides content and children; display:none skips box entirely
-- [ ] **Implement overflow handling** — `overflow: hidden/scroll/auto` clips or adds scrollbars to content
+- [x] ~~Implement overflow handling~~ (2026-04-03 sprint) — overflow:hidden/scroll/auto clips children to content box via clip stack; visible is no-op (default)
 
 ## 🟡 High (HTML/CSS Coverage)
 

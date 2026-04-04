@@ -15,6 +15,9 @@ type Canvas struct {
 	Width  int
 	Height int
 	Pixels *image.RGBA
+
+	// clipStack tracks clipping rectangles for overflow:hidden/scroll/auto
+	clipStack []struct{ X, Y, W, H int }
 }
 
 // NewCanvas creates a new canvas with the given dimensions.
@@ -44,11 +47,78 @@ func (c *Canvas) SetPixel(x, y int, col color.Color) {
 	c.Pixels.Set(x, y, col)
 }
 
-// FillRect fills a rectangle with a color.
+// PushClip restricts drawing to the given rectangle (intersected with current clip).
+func (c *Canvas) PushClip(x, y, w, h int) {
+	if len(c.clipStack) > 0 {
+		// Intersect with current clip
+		cur := c.clipStack[len(c.clipStack)-1]
+		x2 := x + w
+		y2 := y + h
+		cx2 := cur.X + cur.W
+		cy2 := cur.Y + cur.H
+		if x < cur.X {
+			x = cur.X
+		}
+		if y < cur.Y {
+			y = cur.Y
+		}
+		if x2 > cx2 {
+			x2 = cx2
+		}
+		if y2 > cy2 {
+			y2 = cy2
+		}
+		x = x
+		y = y
+		w = x2 - x
+		h = y2 - y
+	}
+	c.clipStack = append(c.clipStack, struct{ X, Y, W, H int }{x, y, w, h})
+}
+
+// PopClip restores the previous clipping rectangle.
+func (c *Canvas) PopClip() {
+	if len(c.clipStack) > 0 {
+		c.clipStack = c.clipStack[:len(c.clipStack)-1]
+	}
+}
+
+// FillRect fills a rectangle with a color (clipped to current clip rect).
 func (c *Canvas) FillRect(x, y, w, h int, col color.Color) {
-	for dy := 0; dy < h; dy++ {
-		for dx := 0; dx < w; dx++ {
-			c.SetPixel(x+dx, y+dy, col)
+	if len(c.clipStack) == 0 {
+		// Fast path: no clipping
+		for dy := 0; dy < h; dy++ {
+			for dx := 0; dx < w; dx++ {
+				c.Pixels.Set(x+dx, y+dy, col)
+			}
+		}
+		return
+	}
+	// Clipped path
+	clip := c.clipStack[len(c.clipStack)-1]
+	cx2 := clip.X + clip.W
+	cy2 := clip.Y + clip.H
+	x2 := x + w
+	y2 := y + h
+	// Compute intersection with clip rect
+	if x < clip.X {
+		x = clip.X
+	}
+	if y < clip.Y {
+		y = clip.Y
+	}
+	if x2 > cx2 {
+		x2 = cx2
+	}
+	if y2 > cy2 {
+		y2 = cy2
+	}
+	if x >= x2 || y >= y2 {
+		return
+	}
+	for dy := y; dy < y2; dy++ {
+		for dx := x; dx < x2; dx++ {
+			c.Pixels.Set(dx, dy, col)
 		}
 	}
 }
@@ -110,6 +180,30 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	}
 	if borderWidth > 0 {
 		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
+	}
+
+	// Handle overflow clipping (clip to content box for hidden/scroll/auto)
+	overflow := box.Style["overflow"]
+	overflowX := box.Style["overflow-x"]
+	overflowY := box.Style["overflow-y"]
+	clipContent := overflow == "hidden" || overflow == "scroll" || overflow == "auto" ||
+		overflowX == "hidden" || overflowX == "scroll" || overflowX == "auto" ||
+		overflowY == "hidden" || overflowY == "scroll" || overflowY == "auto"
+
+	if clipContent {
+		// Clip to the content box area (inside padding)
+		clipX := contentX + paddingLeft
+		clipY := contentY + paddingTop
+		clipW := contentW - paddingLeft - paddingRight
+		clipH := contentH - paddingTop - paddingBottom
+		if clipW <= 0 {
+			clipW = contentW
+		}
+		if clipH <= 0 {
+			clipH = contentH
+		}
+		c.PushClip(clipX, clipY, clipW, clipH)
+		defer c.PopClip()
 	}
 
 	// Check visibility - hidden boxes paint background/border/padding but not content
