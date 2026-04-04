@@ -32,6 +32,9 @@ func main() {
 		return
 	}
 	
+	// Run layout pass
+	layout.LayoutBlock(layoutBox, 800)
+	
 	printTree(layoutBox, 0)
 }
 

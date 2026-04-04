@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,7 @@ type LayoutContext struct {
 	Width  float64 // containing block width
 	Height float64
 	X, Y   float64 // cursor position
+	FontSize float64 // current font size for em unit resolution
 
 	// Float tracking: tracks the float boundaries for content wrapping
 	FloatLeftEdge  float64 // right edge of the rightmost left-float (0 if none)
@@ -34,6 +36,7 @@ func LayoutBlock(root *Box, containingWidth float64) {
 		X:      0,
 		Y:      0,
 		FloatRightEdge: containingWidth,
+		FontSize:        16,
 	}
 
 	layoutChildren(root, ctx)
@@ -302,12 +305,24 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	marginTop := css.ParseLength(box.Style["margin-top"]).Value
 	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
 
+	// Resolve em units in margins using the parent's font-size
+	parentFontSize := 16.0
+	if ctx.FontSize > 0 {
+		parentFontSize = ctx.FontSize
+	}
+	if marginTop > 0 && css.ParseLength(box.Style["margin-top"]).Unit == css.UnitEm {
+		marginTop = marginTop * parentFontSize
+	}
+	if marginBottom > 0 && css.ParseLength(box.Style["margin-bottom"]).Unit == css.UnitEm {
+		marginBottom = marginBottom * parentFontSize
+	}
+
 	// Compute y position: start at FloatBottom if we're below floats
 	// (ctx.Y might be below floats already, or at original cursor)
 	box.ContentY = ctx.Y + marginTop
 
-	// Compute x position respecting floats
-	xPos := ctx.X
+	// Compute x position: reset to 0 to avoid inline cursor leaking into block positioning
+	xPos := 0.0
 	if ctx.FloatLeftEdge > 0 {
 		xPos = ctx.FloatLeftEdge
 	}
@@ -337,6 +352,10 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 		FloatLeftEdge: ctx.FloatLeftEdge,
 		FloatRightEdge: ctx.FloatRightEdge,
 		FloatBottom:   ctx.FloatBottom,
+	}
+	// DEBUG: trace ctx.Y for h1 and div
+	if box.Node != nil && (box.Node.TagName == "h1" || box.Node.TagName == "div") {
+		fmt.Printf("DEBUG [%s] ENTRY: ctx.Y=%.1f marginTop=%.1f\n", box.Node.TagName, ctx.Y, marginTop)
 	}
 	layoutChildren(box, childCtx)
 
@@ -1201,9 +1220,16 @@ func computeHeight(box *Box, childCtx *LayoutContext) float64 {
 		return l.Value
 	}
 
-	// Auto height: sum of children
+	// Auto height: find the bottommost edge among all children
 	if childCtx != nil {
-		return childCtx.Y
+		maxBottom := childCtx.Y
+		for _, child := range box.Children {
+			bottom := child.ContentY + child.ContentH
+			if bottom > maxBottom {
+				maxBottom = bottom
+			}
+		}
+		return maxBottom - box.ContentY
 	}
 	return 0
 }

@@ -63,41 +63,291 @@ func (n *Node) AppendChild(child *Node) {
 
 // matchSelector returns true if node matches the given selector.
 // Tag name matching is case-insensitive per HTML5 spec.
+// Handles: tagname, #id, .class, [attr], [attr=value], :not(), :first-child, :last-child, :only-child
 func matchSelector(n *Node, selector string) bool {
 	if n.Type != NodeElement {
 		return false
 	}
 
-	// Tag name selector (case-insensitive per HTML5 spec)
-	if strings.EqualFold(selector, n.TagName) {
-		return true
+	sel := strings.TrimSpace(selector)
+	tagName := strings.ToLower(n.TagName)
+
+	// Handle compound selectors like "tag:not(...)" or "tag.class"
+	// We need to check ALL parts of the selector
+	remaining := sel
+
+	for len(remaining) > 0 {
+		remaining = strings.TrimSpace(remaining)
+		if len(remaining) == 0 {
+			break
+		}
+
+		switch remaining[0] {
+		case ':':
+			// Pseudo-class or pseudo-element
+			// Find the end of the pseudo
+			var pseudoName, pseudoArg string
+			if idx := strings.Index(remaining[1:], "("); idx >= 0 && idx < strings.Index(remaining[1:], ")") {
+				// Has argument
+				pseudoName = remaining[1 : idx+1]
+				argStart := idx + 2
+				depth := 1
+				for i := argStart; i < len(remaining); i++ {
+					if remaining[i] == '(' {
+						depth++
+					} else if remaining[i] == ')' {
+						depth--
+						if depth == 0 {
+							pseudoArg = remaining[argStart:i]
+							remaining = remaining[i+1:]
+							break
+						}
+					}
+				}
+			} else {
+				// No argument - find end of pseudo name
+				end := 1
+				for end < len(remaining) && (remaining[end] == ':' || remaining[end] == '-' || (remaining[end] >= 'a' && remaining[end] <= 'z') || (remaining[end] >= 'A' && remaining[end] <= 'Z') || (remaining[end] >= '0' && remaining[end] <= '9')) {
+					end++
+				}
+				pseudoName = remaining[1:end]
+				remaining = remaining[end:]
+			}
+
+			// Evaluate pseudo-class
+			if !matchPseudoClass(n, pseudoName, pseudoArg) {
+				return false
+			}
+
+		case '#':
+			// ID selector
+			end := 1
+			for end < len(remaining) && remaining[end] != '.' && remaining[end] != ':' && remaining[end] != '[' && remaining[end] != ' ' {
+				end++
+			}
+			id := remaining[1:end]
+			if n.GetAttribute("id") != id {
+				return false
+			}
+			remaining = remaining[end:]
+
+		case '.':
+			// Class selector
+			end := 1
+			for end < len(remaining) && remaining[end] != '.' && remaining[end] != '#' && remaining[end] != ':' && remaining[end] != '[' && remaining[end] != ' ' {
+				end++
+			}
+			class := remaining[1:end]
+			classList := splitClasses(n.GetAttribute("class"))
+			found := false
+			for _, c := range classList {
+				if c == class {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+			remaining = remaining[end:]
+
+		case '[':
+			// Attribute selector
+			end := strings.Index(remaining[1:], "]") + 2
+			if end < 2 {
+				return false
+			}
+			attrSel := remaining[1 : end-1]
+			remaining = remaining[end:]
+			if !matchAttributeSelector(n, attrSel) {
+				return false
+			}
+
+		case '*':
+			// Universal selector
+			remaining = remaining[1:]
+
+		default:
+			// Tag name selector
+			end := 0
+			for end < len(remaining) && remaining[end] != '.' && remaining[end] != '#' && remaining[end] != ':' && remaining[end] != '[' && remaining[end] != ' ' {
+				end++
+			}
+			tag := strings.ToLower(remaining[:end])
+			if tag != "*" && tagName != tag {
+				return false
+			}
+			remaining = remaining[end:]
+		}
 	}
 
-	// ID selector (#id)
-	if len(selector) > 1 && selector[0] == '#' {
-		id := selector[1:]
-		for _, attr := range n.Attributes {
-			if attr.Key == "id" && attr.Value == id {
+	return true
+}
+
+// matchPseudoClass evaluates a pseudo-class
+func matchPseudoClass(n *Node, pseudoName, pseudoArg string) bool {
+	switch strings.ToLower(pseudoName) {
+	case "not":
+		// :not(.foo, .bar) handles comma-separated selectors
+		selectors := strings.Split(pseudoArg, ",")
+		for _, innerSel := range selectors {
+			innerSel = strings.TrimSpace(innerSel)
+			// If ANY of the inner selectors match, the :not() fails
+			if matchSelector(n, innerSel) {
+				return false
+			}
+		}
+		return true
+	case "first-child":
+		if n.Parent == nil {
+			return false
+		}
+		for _, child := range n.Parent.Children {
+			if child.Type == NodeElement {
+				return child == n
+			}
+		}
+		return false
+	case "last-child":
+		if n.Parent == nil {
+			return false
+		}
+		var lastElement *Node
+		for _, child := range n.Parent.Children {
+			if child.Type == NodeElement {
+				lastElement = child
+			}
+		}
+		return lastElement == n
+	case "only-child":
+		if n.Parent == nil {
+			return false
+		}
+		count := 0
+		for _, child := range n.Parent.Children {
+			if child.Type == NodeElement {
+				count++
+			}
+		}
+		return count == 1
+	case "disabled":
+		// :disabled matches form elements with disabled attribute
+		tag := strings.ToLower(n.TagName)
+		switch tag {
+		case "input", "button", "select", "textarea", "fieldset", "optgroup", "option":
+			return hasAttribute(n, "disabled")
+		}
+		return false
+	case "enabled":
+		// :enabled matches form elements that are NOT disabled
+		tag := strings.ToLower(n.TagName)
+		switch tag {
+		case "input", "button", "select", "textarea", "fieldset", "optgroup", "option":
+			return !hasAttribute(n, "disabled")
+		}
+		return true
+	case "checked":
+		// :checked matches checkbox/radio with checked attribute
+		tag := strings.ToLower(n.TagName)
+		if tag == "input" {
+			typ := strings.ToLower(getAttribute(n, "type"))
+			if typ == "checkbox" || typ == "radio" {
+				return hasAttribute(n, "checked")
+			}
+		}
+		return false
+	case "focus-visible":
+		// :focus-visible: matches elements that should show focus indicator
+		return hasAttribute(n, "tabindex") || hasAttribute(n, "contenteditable")
+	case "lang":
+		// :lang(en) matches elements with matching lang attribute
+		if pseudoArg == "" {
+			return false
+		}
+		lang := strings.ToLower(getAttribute(n, "lang"))
+		code := strings.ToLower(pseudoArg)
+		return lang == code || strings.HasPrefix(lang, code+"-")
+	default:
+		// Unknown pseudo-class - treat as matching for forward compatibility
+		return true
+	}
+}
+
+// hasAttribute returns true if the node has the given attribute (value doesn't matter)
+func hasAttribute(n *Node, key string) bool {
+	for _, attr := range n.Attributes {
+		if attr.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// getAttribute returns the value of an attribute or empty string
+func getAttribute(n *Node, key string) string {
+	for _, attr := range n.Attributes {
+		if attr.Key == key {
+			return attr.Value
+		}
+	}
+	return ""
+}
+
+// matchAttributeSelector checks if an attribute selector matches
+func matchAttributeSelector(n *Node, attrSel string) bool {
+	var attrName, op, value string
+	for i, c := range attrSel {
+		if c == '=' && i > 0 {
+			attrName = attrSel[:i]
+			value = attrSel[i+1:]
+			if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+				value = value[1 : len(value)-1]
+			}
+			op = "="
+			break
+		}
+	}
+	if attrName == "" {
+		attrName = attrSel
+		op = ""
+		value = ""
+	}
+
+	// Check if attribute exists/matches
+	attrValue := ""
+	hasAttr := false
+	for _, attr := range n.Attributes {
+		if attr.Key == attrName {
+			hasAttr = true
+			attrValue = attr.Value
+			break
+		}
+	}
+
+	switch op {
+	case "":
+		return hasAttr
+	case "=":
+		if !hasAttr {
+			return false
+		}
+		return attrValue == value
+	case "~=":
+		if !hasAttr {
+			return false
+		}
+		for _, c := range strings.Fields(attrValue) {
+			if c == value {
 				return true
 			}
 		}
-	}
-
-	// Class selector (.class)
-	if len(selector) > 1 && selector[0] == '.' {
-		class := selector[1:]
-		for _, attr := range n.Attributes {
-			if attr.Key == "class" {
-				// Simple class matching
-				for _, c := range splitClasses(attr.Value) {
-					if c == class {
-						return true
-					}
-				}
-			}
+		return false
+	case "|=":
+		if !hasAttr {
+			return false
 		}
+		return attrValue == value || strings.HasPrefix(attrValue, value+"-")
 	}
-
 	return false
 }
 

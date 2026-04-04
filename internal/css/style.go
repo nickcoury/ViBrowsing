@@ -407,28 +407,42 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		props["display"] = "block"
 		props["font-size"] = "2em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "0.67em"
+		props["margin-bottom"] = "0.67em"
 	case "h2":
 		props["display"] = "block"
 		props["font-size"] = "1.5em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "0.83em"
+		props["margin-bottom"] = "0.83em"
 	case "h3":
 		props["display"] = "block"
 		props["font-size"] = "1.17em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "1em"
+		props["margin-bottom"] = "1em"
 	case "h4":
 		props["display"] = "block"
 		props["font-size"] = "1em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "1.33em"
+		props["margin-bottom"] = "1.33em"
 	case "h5":
 		props["display"] = "block"
 		props["font-size"] = "0.83em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "1.67em"
+		props["margin-bottom"] = "1.67em"
 	case "h6":
 		props["display"] = "block"
 		props["font-size"] = "0.67em"
 		props["font-weight"] = "bold"
+		props["margin-top"] = "2.33em"
+		props["margin-bottom"] = "2.33em"
 	case "p":
 		props["display"] = "block"
+		props["margin-top"] = "1em"
+		props["margin-bottom"] = "1em"
 	case "div", "header", "footer", "nav", "section", "article", "aside", "main", "figure", "figcaption", "details", "summary":
 		props["display"] = "block"
 	case "ul", "ol":
@@ -1143,12 +1157,47 @@ func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
 		// State pseudo-classes — for now, treat as matching (no interactivity state tracking)
 		return true
 	case "checked":
-		// For input[type=checkbox] and input[type=radio]
+		// For input[type=checkbox] and input[type=radio], matches if checked attribute is present
 		typ := strings.ToLower(node.GetAttribute("type"))
-		if node.GetAttribute("checked") != "" || typ == "checkbox" || typ == "radio" {
-			return node.GetAttribute("checked") != ""
+		if typ == "checkbox" || typ == "radio" {
+			return node.HasAttribute("checked")
 		}
 		return false
+	case "disabled":
+		// :disabled matches elements with the disabled attribute
+		// Form elements: input, button, select, textarea, fieldset, optgroup, option
+		tag := strings.ToLower(node.TagName)
+		switch tag {
+		case "input", "button", "select", "textarea", "fieldset", "optgroup", "option":
+			return node.HasAttribute("disabled")
+		}
+		return false
+	case "enabled":
+		// :enabled matches elements that are not disabled
+		tag := strings.ToLower(node.TagName)
+		switch tag {
+		case "input", "button", "select", "textarea", "fieldset", "optgroup", "option":
+			return !node.HasAttribute("disabled")
+		}
+		// Non-form elements are implicitly enabled
+		return true
+	case "focus-visible":
+		// :focus-visible matches elements with focus that should show a focus indicator
+		// Currently treat as matching if :focus would match (keyboard focus state tracking not implemented)
+		return node.HasAttribute("tabindex") || node.HasAttribute("contenteditable")
+	case "lang":
+		// :lang(en) matches elements with lang attribute starting with the given language code
+		if pseudoArg == "" {
+			return false
+		}
+		lang := node.GetAttribute("lang")
+		if lang == "" {
+			return false
+		}
+		lang = strings.ToLower(lang)
+		code := strings.ToLower(pseudoArg)
+		// Match if lang equals code OR starts with code followed by '-'
+		return lang == code || strings.HasPrefix(lang, code+"-")
 	case "valid":
 		// Form validation — checks proper formatting for required fields
 		return IsValid(node)
@@ -1318,7 +1367,6 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["background"] = value
 		// If no color was identified, treat last color-like value as background-color
 		if !colorSet && len(parts) > 0 {
-			last := strings.ToLower(parts[len(parts)-1])
 			if ParseColor(parts[len(parts)-1]).A > 0 {
 				props["background-color"] = parts[len(parts)-1]
 			}
@@ -1438,6 +1486,32 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["text-indent"] = value
 	case "text-transform":
 		props["text-transform"] = value
+	case "text-justify":
+		props["text-justify"] = value
+	case "ruby-align":
+		props["ruby-align"] = value
+	case "ruby-position":
+		props["ruby-position"] = value
+	case "place-items":
+		props["place-items"] = value
+	case "place-self":
+		props["place-self"] = value
+	case "place-content":
+		props["place-content"] = value
+	case "text-wrap":
+		props["text-wrap"] = value
+	case "math-style":
+		props["math-style"] = value
+	case "view-transition-name":
+		props["view-transition-name"] = value
+	case "field-sizing":
+		props["field-sizing"] = value
+	case "container-type":
+		props["container-type"] = value
+	case "container-name":
+		props["container-name"] = value
+	case "container":
+		props["container"] = value
 	case "font-variant":
 		props["font-variant"] = value
 	case "unicode-bidi":
@@ -1649,14 +1723,6 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["border-image-outset"] = value
 	case "border-image-repeat":
 		props["border-image-repeat"] = value
-	case "caret-color":
-		props["caret-color"] = value
-	case "cursor":
-		// cursor: auto, default, pointer, crosshair, move, text, wait, help, grab, grabbing, n-resize, s-resize, e-resize, w-resize, ne-resize, nw-resize, se-resize, sw-resize
-		props["cursor"] = value
-	case "empty-cells":
-		// Valid values: show, hide
-		props["empty-cells"] = value
 	case "transition":
 		parseTransitionShorthand(props, value)
 	case "transition-property":
@@ -1669,14 +1735,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["transition-delay"] = value
 	case "resize":
 		props["resize"] = value
-	case "pointer-events":
-		props["pointer-events"] = value
 	case "caption-side":
 		props["caption-side"] = value
-	case "empty-cells":
-		props["empty-cells"] = value
-	case "caret-color":
-		props["caret-color"] = value
 	case "appearance":
 		props["appearance"] = value
 	case "overscroll-behavior":
@@ -1722,6 +1782,16 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["mix-blend-mode"] = value
 	case "hanging-punctuation":
 		props["hanging-punctuation"] = value
+	case "text-decoration-thickness":
+		props["text-decoration-thickness"] = value
+	case "text-underline-offset":
+		props["text-underline-offset"] = value
+	case "outline-offset":
+		props["outline-offset"] = value
+	case "text-decoration-skip-ink":
+		props["text-decoration-skip-ink"] = value
+	case "hyphens":
+		props["hyphens"] = value
 	}
 }
 

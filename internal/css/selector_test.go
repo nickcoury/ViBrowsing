@@ -387,7 +387,7 @@ func TestMatchNodeSelectorNot(t *testing.T) {
 		{"input:not(.optional)", 1},    // only input1
 		{"input:not(.required)", 1},     // only input2
 		{".required:not(input)", 0},     // no element matches
-		{"*:not(body)", 3},             // html, form, input1, input2, div = 5... wait, we only have 4 matching elements (html root doesn't count)
+		{"*:not(body)", 5},              // html, form, input1, input2, div = 5 non-body elements
 	}
 
 	for _, tc := range tests {

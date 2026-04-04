@@ -299,6 +299,11 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = BdoBox
 	case "abbr":
 		box.Type = AbbrBox
+		// Default abbr styling: dotted underline
+		if box.Style["text-decoration-line"] == "" {
+			box.Style["text-decoration-line"] = "underline"
+			box.Style["text-decoration-style"] = "dotted"
+		}
 	case "mark":
 		box.Type = MarkBox
 		// Default mark styling

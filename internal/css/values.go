@@ -16,12 +16,10 @@ type Color struct {
 	R, G, B, A uint8
 }
 
-// RGBA implements color.Color (8-bit per channel expanded to 16-bit big-endian per channel).
+// RGBA implements color.Color.
+// The returned values are 16-bit big-endian (0-65535 per channel).
 func (c Color) RGBA() (r, g, b, a uint32) {
-	return uint32(c.R)<<8 | uint32(c.R),
-		uint32(c.G)<<8 | uint32(c.G),
-		uint32(c.B)<<8 | uint32(c.B),
-		uint32(c.A)<<8 | uint32(c.A)
+	return uint32(c.R)<<8, uint32(c.G)<<8, uint32(c.B)<<8, uint32(c.A)<<8
 }
 
 // LengthUnit represents a CSS length unit.
@@ -47,6 +45,22 @@ func ParseLength(s string) Length {
 	s = strings.TrimSpace(s)
 	if s == "auto" {
 		return Length{IsAuto: true}
+	}
+
+	// Handle calc() expressions - evaluate and return as px
+	// calc() is the only CSS function that can appear in length properties
+	if strings.HasPrefix(s, "calc(") {
+		// For calc(), we need a percentage resolution function.
+		// Since ParseLength doesn't have context, we evaluate with a default
+		// that treats % as 0 (layout code should use EvaluateCalcProperty instead).
+		val, err := ParseCalc(s, func(unit string) float64 {
+			// Default: percentage resolves to 0 in generic context
+			// Layout code should pass proper context when available
+			return 0
+		})
+		if err == nil {
+			return Length{Value: val, Unit: UnitPx}
+		}
 	}
 
 	var value float64
@@ -82,6 +96,18 @@ func ParseLength(s string) Length {
 	default:
 		return Length{Value: value, Unit: UnitPx}
 	}
+}
+
+// EvaluateCalcProperty evaluates a CSS property value that may contain calc().
+// It should be used in layout code where percentage context is known.
+// resolvePercent returns the pixel value for a percentage (e.g., containing block width).
+func EvaluateCalcProperty(value string, resolvePercent func(unit string) float64) float64 {
+	val, err := ParseCalc(value, resolvePercent)
+	if err != nil {
+		// Fall back to parsing as plain length
+		return ParseLength(value).Value
+	}
+	return val
 }
 
 // ParseCalc parses a CSS calc() expression like "100% - 20px" or "50% + 10px".
@@ -909,6 +935,60 @@ func EvaluateCalcValue(v interface{}) float64 {
 		return EvaluateCalc(val).Value
 	}
 	return 0
+}
+
+// QuotePair represents opening and closing quote characters.
+type QuotePair [2]string
+
+// ParseQuotes parses a CSS quotes property value.
+// Format: "«" "»" "‹" "›" (pairs of opening/closing quotes)
+// Returns default quotes if not specified: « », ‹ ›
+func ParseQuotes(s string) []QuotePair {
+	s = strings.TrimSpace(s)
+	if s == "none" || s == "" {
+		return nil
+	}
+
+	var pairs []QuotePair
+	var current strings.Builder
+	inQuote := false
+	var quoteChar rune
+	for _, r := range s {
+		if !inQuote && (r == '"' || r == '\'') {
+			inQuote = true
+			quoteChar = r
+			current.Reset()
+		} else if inQuote && r == quoteChar {
+			inQuote = false
+			// End of quoted string - save it
+			pairs = append(pairs, QuotePair{current.String(), ""})
+			current.Reset()
+		} else if inQuote {
+			current.WriteRune(r)
+		}
+	}
+
+	if len(pairs) >= 2 {
+		// Pair up opening and closing quotes
+		result := make([]QuotePair, 0, len(pairs)/2)
+		for i := 0; i < len(pairs)-1; i += 2 {
+			result = append(result, QuotePair{pairs[i][0], pairs[i+1][0]})
+		}
+		if len(result) > 0 {
+			return result
+		}
+	}
+
+	// Default quotes: « » and ‹ ›
+	return []QuotePair{{"«", "»"}, {"‹", "›"}}
+}
+
+// GetQuote returns the nth quote pair from a quotes list, wrapping around.
+func GetQuote(quotes []QuotePair, n int) QuotePair {
+	if len(quotes) == 0 {
+		return QuotePair{"\"", "\""} // fallback
+	}
+	return quotes[n%len(quotes)]
 }
 
 // ParseClamp parses a clamp(min, val, max) expression.

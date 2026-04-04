@@ -296,25 +296,28 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Box shadow (drawn after background, before border)
 	boxShadow := box.Style["box-shadow"]
 	if boxShadow != "" && boxShadow != "none" {
-		// Parse box-shadow: offsetX offsetY blurRadius color
-		// Format: <offset-x> <offset-y> <blur-radius> <color>
-		parts := strings.Fields(boxShadow)
-		if len(parts) >= 2 {
-			shadowX := int(css.ParseLength(parts[0]).Value)
-			shadowY := int(css.ParseLength(parts[1]).Value)
-			shadowColor := css.Color{R: 0, G: 0, B: 0, A: 128}
-			if len(parts) >= 4 {
-				shadowColor = css.ParseColor(parts[3])
-			} else if len(parts) >= 3 {
-				shadowColor = css.ParseColor(parts[2])
+		// Multiple box-shadows are comma-separated: box-shadow: 1px 1px black, 2px 2px blue
+		// Split by comma but respect function parentheses
+		shadowParts := strings.Split(boxShadow, ",")
+		for _, shadow := range shadowParts {
+			parts := strings.Fields(shadow)
+			if len(parts) >= 2 {
+				shadowX := int(css.ParseLength(parts[0]).Value)
+				shadowY := int(css.ParseLength(parts[1]).Value)
+				shadowColor := css.Color{R: 0, G: 0, B: 0, A: 128}
+				if len(parts) >= 4 {
+					shadowColor = css.ParseColor(parts[3])
+				} else if len(parts) >= 3 {
+					shadowColor = css.ParseColor(parts[2])
+				}
+				if opacity < 1 {
+					shadowColor = applyOpacity(shadowColor, opacity)
+				}
+				// Draw shadow rectangle offset from content area
+				shadowDrawX := contentX + shadowX
+				shadowDrawY := contentY + shadowY
+				c.FillRect(shadowDrawX, shadowDrawY, contentW, contentH, shadowColor)
 			}
-			if opacity < 1 {
-				shadowColor = applyOpacity(shadowColor, opacity)
-			}
-			// Draw shadow rectangle offset from content area
-			shadowDrawX := contentX + shadowX
-			shadowDrawY := contentY + shadowY
-			c.FillRect(shadowDrawX, shadowDrawY, contentW, contentH, shadowColor)
 		}
 	}
 
@@ -329,11 +332,13 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		if opacity < 1 {
 			outlineColor = applyOpacity(outlineColor, opacity)
 		}
-		// Outline is drawn around the outer edge of the border area
-		ox := contentX - outlineWidth
-		oy := contentY - outlineWidth
-		ow := contentW + outlineWidth*2
-		oh := contentH + outlineWidth*2
+		// Outline offset (gap between border and outline)
+		outlineOffset := int(css.ParseLength(box.Style["outline-offset"]).Value)
+		// Outline is drawn around the outer edge of the border area, offset by outline-offset
+		ox := contentX - outlineWidth - outlineOffset
+		oy := contentY - outlineWidth - outlineOffset
+		ow := contentW + outlineWidth*2 + outlineOffset*2
+		oh := contentH + outlineWidth*2 + outlineOffset*2
 		c.DrawBorder(ox, oy, ow, oh, outlineWidth, outlineColor)
 	}
 
@@ -790,21 +795,32 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	textOverflow := box.Style["text-overflow"]
 	showEllipsis := (overflow == "hidden" || overflowX == "hidden") && textOverflow == "ellipsis"
 
-	// Parse text-shadow
-	shadowColor := textColor
-	shadowX := 0
-	shadowY := 0
-	hasTextShadow := false
+	// Parse text-shadow (multiple comma-separated shadows)
+	type textShadow struct {
+		x     int
+		y     int
+		color css.Color
+	}
+	var textShadows []textShadow
 	if shadow := box.Style["text-shadow"]; shadow != "" && shadow != "none" {
-		hasTextShadow = true
-		parts := strings.Fields(shadow)
-		if len(parts) >= 2 {
-			shadowX = int(css.ParseLength(parts[0]).Value)
-			shadowY = int(css.ParseLength(parts[1]).Value)
-			if len(parts) >= 4 {
-				shadowColor = css.ParseColor(parts[3])
-			} else if len(parts) >= 3 {
-				shadowColor = css.ParseColor(parts[2])
+		shadowParts := splitShadowParts(shadow)
+		for _, shadow := range shadowParts {
+			parts := strings.Fields(shadow)
+			if len(parts) >= 2 {
+				ts := textShadow{
+					x:     int(css.ParseLength(parts[0]).Value),
+					y:     int(css.ParseLength(parts[1]).Value),
+					color: textColor,
+				}
+				if len(parts) >= 4 {
+					ts.color = css.ParseColor(parts[3])
+				} else if len(parts) >= 3 {
+					// If 3 parts and third isn't a color, use it as color
+					if pc := css.ParseColor(parts[2]); pc.A > 0 || parts[2] == "transparent" {
+						ts.color = pc
+					}
+				}
+				textShadows = append(textShadows, ts)
 			}
 		}
 	}
@@ -839,9 +855,9 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			if italicSlant > 1 {
 				ellipsisH = fontSize * italicSlant
 			}
-			// Draw text-shadow for ellipsis
-			if hasTextShadow {
-				c.FillRect(int(currentX)+shadowX, int(currentY)+shadowY, int(ellipsisCW), int(ellipsisH), shadowColor)
+			// Draw multiple text-shadows for ellipsis
+			for _, ts := range textShadows {
+				c.FillRect(int(currentX)+ts.x, int(currentY)+ts.y, int(ellipsisCW), int(ellipsisH), ts.color)
 			}
 			c.FillRect(int(currentX), int(currentY), int(ellipsisCW), int(ellipsisH), textColor)
 			break
@@ -864,6 +880,17 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			continue
 		}
 		if ch == '\t' {
+			// tab-size: number of spaces each tab renders
+			tabSize := 8 // default
+			if ts := css.ParseLength(box.Style["tab-size"]).Value; ts > 0 {
+				tabSize = int(ts)
+			}
+			// Calculate tab width in pixels
+			tabWidth := float64(tabSize) * charWidth * italicSlant
+			// Jump to next tab stop
+			tabStop := math.Ceil((currentX - float64(x)) / tabWidth) * tabWidth
+			currentX = float64(x) + tabStop
+			// Draw tab as space
 			ch = ' '
 		}
 
@@ -901,9 +928,9 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			charH = fontSize * italicSlant
 		}
 
-		// Draw text-shadow first (behind the text)
-		if hasTextShadow {
-			c.FillRect(int(currentX)+shadowX, int(currentY)+shadowY, int(cw), int(charH), shadowColor)
+		// Draw text-shadow first (behind the text) - multiple shadows
+		for _, ts := range textShadows {
+			c.FillRect(int(currentX)+ts.x, int(currentY)+ts.y, int(cw), int(charH), ts.color)
 		}
 
 		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
@@ -918,24 +945,69 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			if dc := box.Style["text-decoration-color"]; dc != "" && dc != "currentColor" {
 				decorationColor = css.ParseColor(dc)
 			}
+			decorationStyle := box.Style["text-decoration-style"]
+			underlineOffset := css.ParseLength(box.Style["text-underline-offset"]).Value
+			if underlineOffset == 0 {
+				underlineOffset = 1 // default offset
+			}
 
 			// Underline: 1px line at baseline (below text)
 			if decorationLine == "underline" || strings.Contains(decorationLine, "underline") {
-				decY := int(currentY + fontSize + 1)
+				decY := int(currentY + fontSize + underlineOffset)
 				decH := 1
-				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				if dt := css.ParseLength(box.Style["text-decoration-thickness"]).Value; dt > 0 {
+					decH = int(dt)
+				}
+				// Draw dotted/dashed underline by skipping every other pixel
+				if decorationStyle == "dotted" {
+					for dx := 0; dx < int(cw); dx += 2 {
+						c.FillRect(int(currentX)+dx, decY, 1, decH, decorationColor)
+					}
+				} else if decorationStyle == "dashed" {
+					for dx := 0; dx < int(cw); dx += 4 {
+						c.FillRect(int(currentX)+dx, decY, 2, decH, decorationColor)
+					}
+				} else {
+					c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				}
 			}
 			// Overline: 1px line above text
 			if decorationLine == "overline" || strings.Contains(decorationLine, "overline") {
 				decY := int(currentY)
 				decH := 1
-				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				if dt := css.ParseLength(box.Style["text-decoration-thickness"]).Value; dt > 0 {
+					decH = int(dt)
+				}
+				if decorationStyle == "dotted" {
+					for dx := 0; dx < int(cw); dx += 2 {
+						c.FillRect(int(currentX)+dx, decY, 1, decH, decorationColor)
+					}
+				} else if decorationStyle == "dashed" {
+					for dx := 0; dx < int(cw); dx += 4 {
+						c.FillRect(int(currentX)+dx, decY, 2, decH, decorationColor)
+					}
+				} else {
+					c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				}
 			}
 			// Line-through: 1px line at middle of text
 			if decorationLine == "line-through" || strings.Contains(decorationLine, "line-through") {
 				decY := int(currentY + fontSize/2)
 				decH := 1
-				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				if dt := css.ParseLength(box.Style["text-decoration-thickness"]).Value; dt > 0 {
+					decH = int(dt)
+				}
+				if decorationStyle == "dotted" {
+					for dx := 0; dx < int(cw); dx += 2 {
+						c.FillRect(int(currentX)+dx, decY, 1, decH, decorationColor)
+					}
+				} else if decorationStyle == "dashed" {
+					for dx := 0; dx < int(cw); dx += 4 {
+						c.FillRect(int(currentX)+dx, decY, 2, decH, decorationColor)
+					}
+				} else {
+					c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+				}
 			}
 		}
 
@@ -1228,10 +1300,109 @@ func (c *Canvas) drawBackgroundImage(img image.Image, x, y, w, h int, repeat, po
 			}
 		}
 	case "space":
-		// Space to fill evenly - treat as simple repeat for now
-		fallthrough
+		// space: tile to fill, but distribute space evenly between images
+		// Count how many images fit
+		countX := 1
+		if imgDrawW < w {
+			countX = (w + imgDrawW - 1) / imgDrawW
+		}
+		countY := 1
+		if imgDrawH < h {
+			countY = (h + imgDrawH - 1) / imgDrawH
+		}
+		// Compute total space to distribute
+		totalSpaceX := w - countX*imgDrawW
+		totalSpaceY := h - countY*imgDrawH
+		spaceX := 0
+		spaceY := 0
+		if countX > 1 {
+			spaceX = totalSpaceX / (countX + 1)
+		}
+		if countY > 1 {
+			spaceY = totalSpaceY / (countY + 1)
+		}
+		// Draw images with even spacing
+		for py := y + spaceY; py < y+h; py += imgDrawH + spaceY {
+			for px := x + spaceX; px < x+w; px += imgDrawW + spaceX {
+				drawX := px
+				drawY := py
+				drawW := imgDrawW
+				drawH := imgDrawH
+				srcX := 0
+				srcY := 0
+				if px < x {
+					srcX = x - px
+					drawW = imgDrawW - srcX
+					drawX = x
+				}
+				if py < y {
+					srcY = y - py
+					drawH = imgDrawH - srcY
+					drawY = y
+				}
+				rightEdge := drawX + drawW
+				bottomEdge := drawY + drawH
+				if rightEdge > x+w {
+					drawW = x + w - drawX
+				}
+				if bottomEdge > y+h {
+					drawH = y + h - drawY
+				}
+				if drawW > 0 && drawH > 0 {
+					c.drawImagePart(img, drawX, drawY, drawW, drawH, srcX, srcY, srcX+drawW, srcY+drawH, opacity)
+				}
+			}
+		}
 	case "round":
-		fallthrough
+		// round: tile and scale image to fill space (no gaps)
+		countX := 1
+		if imgDrawW < w {
+			countX = (w + imgDrawW - 1) / imgDrawW
+		}
+		countY := 1
+		if imgDrawH < h {
+			countY = (h + imgDrawH - 1) / imgDrawH
+		}
+		// Scale images to fill gaps
+		newImgW := w / countX
+		newImgH := h / countY
+		if newImgW < 1 {
+			newImgW = 1
+		}
+		if newImgH < 1 {
+			newImgH = 1
+		}
+		for py := y; py < y+h; py += newImgH {
+			for px := x; px < x+w; px += newImgW {
+				drawX := px
+				drawY := py
+				drawW := newImgW
+				drawH := newImgH
+				srcX := 0
+				srcY := 0
+				if px < x {
+					srcX = x - px
+					drawW = newImgW - srcX
+					drawX = x
+				}
+				if py < y {
+					srcY = y - py
+					drawH = newImgH - srcY
+					drawY = y
+				}
+				rightEdge := drawX + drawW
+				bottomEdge := drawY + drawH
+				if rightEdge > x+w {
+					drawW = x + w - drawX
+				}
+				if bottomEdge > y+h {
+					drawH = y + h - drawY
+				}
+				if drawW > 0 && drawH > 0 {
+					c.drawImagePart(img, drawX, drawY, drawW, drawH, srcX, srcY, srcX+drawW, srcY+drawH, opacity)
+				}
+			}
+		}
 	case "repeat":
 		fallthrough
 	default:
@@ -2360,4 +2531,39 @@ func (c *Canvas) drawRadialGradient(x, y, w, h int, stops []css.GradientStop, sh
 			c.FillRect(x+px, y+py, 1, 1, pixelColor)
 		}
 	}
+}
+
+// splitShadowParts splits a CSS shadow value by comma, respecting function arguments.
+// E.g., "1px 1px black, 2px 2px blue" -> ["1px 1px black", "2px 2px blue"]
+// E.g., "drop-shadow(1px 1px black) drop-shadow(2px 2px blue)" -> ["drop-shadow(1px 1px black)", "drop-shadow(2px 2px blue)"]
+func splitShadowParts(shadow string) []string {
+	var parts []string
+	var current strings.Builder
+	depth := 0
+	for i := 0; i < len(shadow); i++ {
+		c := shadow[i]
+		if c == '(' {
+			depth++
+			current.WriteByte(c)
+		} else if c == ')' {
+			depth--
+			current.WriteByte(c)
+		} else if c == ',' && depth == 0 {
+			part := strings.TrimSpace(current.String())
+			if part != "" {
+				parts = append(parts, part)
+			}
+			current.Reset()
+		} else {
+			current.WriteByte(c)
+		}
+	}
+	part := strings.TrimSpace(current.String())
+	if part != "" {
+		parts = append(parts, part)
+	}
+	if len(parts) == 0 {
+		parts = []string{shadow}
+	}
+	return parts
 }

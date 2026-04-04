@@ -1,6 +1,7 @@
 package css
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -67,9 +68,13 @@ func ParseNthChild(formula string) (a, b int, err error) {
 		} else if start == i {
 			// No 'n' found and no digits, this might be just a number with sign
 			// Like "-5" which should be a=0, b=-5
-			if _, err := strconv.Atoi(formula); err == nil {
+			// Only valid if the ENTIRE remaining string is a number
+			remaining := formula[i:]
+			if _, err := strconv.Atoi(remaining); err == nil {
 				return 0, sign * a, nil
 			}
+			// Otherwise this is an invalid formula (e.g., "abc", "")
+			return 0, 0, fmt.Errorf("invalid nth-child formula: %s", formula)
 		}
 	}
 
@@ -81,7 +86,7 @@ func ParseNthChild(formula string) (a, b int, err error) {
 	if i < len(formula) {
 		// Skip optional + or - (already handled leading sign)
 		bSign := 1
-		if i < len(formula) && (formula[i] == '+' || formula[i] == '-') {
+		if formula[i] == '+' || formula[i] == '-' {
 			if formula[i] == '-' {
 				bSign = -1
 			}
@@ -95,6 +100,9 @@ func ParseNthChild(formula string) (a, b int, err error) {
 			if parsed, e := strconv.Atoi(formula[start:i]); e == nil {
 				b = parsed * bSign
 			}
+		} else {
+			// No digits found after sign — this is invalid (e.g., "n+", "2n+")
+			return 0, 0, fmt.Errorf("invalid nth-child formula: %s", formula)
 		}
 	}
 
@@ -150,21 +158,47 @@ func MatchNthChild(node *html.Node, formula string, ofType, last bool) bool {
 		}
 	}
 
-	// Apply an*n + b formula
+	// Apply an + b formula using 1-indexed positions
+	// CSS nth-child: 1st child = position 1, 2nd = position 2, etc.
+	// DOM array is 0-indexed, so position = index + 1
 	if a == 0 {
-		return index == b
+		return index+1 == b
 	}
-	return (index-b >= 0) && (index-b)%a == 0
+	// We need to find n >= 0 such that pos = a*n + b
+	// Rearranging: pos - b = a*n, so n = (pos - b) / a
+	// For n to be valid (non-negative integer), (pos - b) must be divisible by a
+	// and the result must be >= 0.
+	// Use (b - pos) to handle negative a values: n = (b - pos) / (-a)
+	// The sign of a determines the direction.
+	pos := index + 1
+	diff := pos - b
+	if diff == 0 {
+		return true // n = 0 is always valid
+	}
+	if a > 0 {
+		// For positive a: pos must be >= b and (pos-b) % a == 0
+		return diff > 0 && diff%a == 0
+	}
+	// For negative a: pos must be <= b and (b-pos) % (-a) == 0
+	return diff < 0 && (-diff)%(-a) == 0
 }
 
 // MatchNot checks if a node does NOT match the given selector.
-// This properly handles complex selectors including combinators.
+// This properly handles complex selectors including selector lists.
 func MatchNot(node *html.Node, selector string) bool {
 	if selector == "" {
 		return true
 	}
-	// Use the full selector matching chain
-	return !MatchNodeSelector(node, selector)
+	// Handle selector lists (comma-separated)
+	// :not(.foo, .bar) matches if the element matches NEITHER .foo NOR .bar
+	selectors := strings.Split(selector, ",")
+	for _, sel := range selectors {
+		sel = strings.TrimSpace(sel)
+		if sel != "" && MatchNodeSelector(node, sel) {
+			return false
+		}
+	}
+	return true
 }
 
 // IsValid checks if a form element has valid content.
@@ -181,12 +215,12 @@ func IsValid(node *html.Node) bool {
 		return true
 	}
 
-	required := node.GetAttribute("required")
+	required := node.HasAttribute("required")
 	value := node.GetAttribute("value")
 	inputType := strings.ToLower(node.GetAttribute("type"))
 
-	// If required and empty, it's invalid
-	if required != "" && value == "" {
+	// If required attribute is present (even with empty value) AND value is empty, the input is invalid
+	if required && strings.TrimSpace(value) == "" {
 		return false
 	}
 
