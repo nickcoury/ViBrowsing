@@ -31,6 +31,17 @@ const (
 	TextAreaBox
 	LabelBox
 	MediaBox
+	SlotBox
+	DialogBox
+	MeterBox
+	ProgressBox
+	RubyBox
+	RubyTextBox
+	RubyBaseBox
+	BdiBox
+	BdoBox
+	AbbrBox
+	MarkBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -42,6 +53,9 @@ type Box struct {
 	// Content area
 	ContentX, ContentY float64
 	ContentW, ContentH float64
+
+	// Aspect ratio (width/height), e.g., 16/9 = 1.78
+	AspectRatio float64
 
 	// Box dimensions (CSS box model)
 	MarginTop, MarginRight, MarginBottom, MarginLeft css.Length
@@ -254,6 +268,34 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = InlineBox
 	case "hr":
 		box.Type = HorizontalRuleBox
+	case "slot":
+		box.Type = SlotBox
+		box.Style["display"] = "contents"
+	case "dialog":
+		box.Type = DialogBox
+		box.Style["display"] = "block"
+	case "meter":
+		box.Type = MeterBox
+		box.Style["display"] = "inline-block"
+	case "progress":
+		box.Type = ProgressBox
+		box.Style["display"] = "inline-block"
+	case "ruby":
+		box.Type = RubyBox
+		// Ruby is inline by default
+	case "rt", "rp":
+		box.Type = RubyTextBox
+	case "bdi":
+		box.Type = BdiBox
+	case "bdo":
+		box.Type = BdoBox
+	case "abbr":
+		box.Type = AbbrBox
+	case "mark":
+		box.Type = MarkBox
+		// Default mark styling
+		box.Style["background-color"] = "yellow"
+		box.Style["color"] = "black"
 	}
 
 	// Flex container
@@ -302,6 +344,28 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		}
 		if _, ok := style["height"]; !ok {
 			box.Style["height"] = "150"
+		}
+	}
+
+	// Apply aspect-ratio when width is set but height is auto
+	if arStr, ok := style["aspect-ratio"]; ok && arStr != "auto" {
+		ratio := css.ParseAspectRatio(arStr)
+		if ratio > 0 {
+			box.AspectRatio = ratio
+			// Check if width is set and height is auto
+			widthLen := css.ParseLength(style["width"])
+			heightLen := css.ParseLength(style["height"])
+			if !widthLen.IsAuto && heightLen.IsAuto {
+				// Width is set, height is auto - compute height from aspect ratio
+				// Use a default width if ContentW not yet set (will be computed later)
+				if box.ContentW > 0 {
+					box.ContentH = box.ContentW / ratio
+				} else {
+					// Width as length value
+					box.ContentW = widthLen.Value
+					box.ContentH = widthLen.Value / ratio
+				}
+			}
 		}
 	}
 

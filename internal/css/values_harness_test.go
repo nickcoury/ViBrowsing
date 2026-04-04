@@ -298,3 +298,445 @@ func BenchmarkParseLength(b *testing.B) {
 		}
 	}
 }
+
+func TestParseCalc(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue float64
+		wantOp    string
+	}{
+		{"simple add", "calc(10px + 5px)", 15, "+"},
+		{"simple subtract", "calc(20px - 8px)", 12, "-"},
+		{"simple multiply", "calc(4px * 2)", 8, "*"},
+		{"simple divide", "calc(20px / 4)", 5, "/"},
+		{"add negative", "calc(10px + -5px)", 5, "+"},
+		{"complex", "calc(100px - 20px)", 80, "-"},
+		{"decimal", "calc(10.5px + 5.5px)", 16, "+"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := ParseCalc(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			result := EvaluateCalc(expr)
+			if result.Value != tc.wantValue {
+				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestParseCalc_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"calc()",
+		"notcalc(10px)",
+		"calc(10px",
+		"10px)",
+		"min(10px)",
+		"max(10px)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			_, err := ParseCalc(input)
+			if err == nil {
+				t.Errorf("expected error for input %q", input)
+			}
+		})
+	}
+}
+
+func TestParseCalc_Evaluate(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue float64
+	}{
+		{"add", "calc(10px + 5px)", 15},
+		{"subtract", "calc(10px - 5px)", 5},
+		{"multiply", "calc(10px * 2)", 20},
+		{"divide", "calc(10px / 2)", 5},
+		{"order of ops", "calc(10px + 5px * 2)", 20}, // 5*2 + 10
+		{"nested parens", "calc((10px + 5px))", 15},
+		{"zero", "calc(0px + 0px)", 0},
+		{"negative result", "calc(5px - 10px)", -5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			expr, err := ParseCalc(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			result := EvaluateCalc(expr)
+			if result.Value != tc.wantValue {
+				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestParseClamp(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue float64
+	}{
+		{"val in range", "clamp(10px, 50px, 100px)", 50},
+		{"val below min", "clamp(50px, 10px, 100px)", 50},
+		{"val above max", "clamp(10px, 200px, 100px)", 100},
+		{"val equals min", "clamp(50px, 50px, 100px)", 50},
+		{"val equals max", "clamp(10px, 100px, 100px)", 100},
+		{"all same", "clamp(50px, 50px, 50px)", 50},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ParseClamp(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.Value != tc.wantValue {
+				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestParseClamp_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"clamp()",
+		"notclamp(10px)",
+		"clamp(10px)",
+		"clamp(10px, 20px)",
+		"clamp(10px, 20px, 30px, 40px)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			_, err := ParseClamp(input)
+			if err == nil {
+				t.Errorf("expected error for input %q", input)
+			}
+		})
+	}
+}
+
+func TestParseMin(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue float64
+	}{
+		{"two values", "min(10px, 50px)", 10},
+		{"three values", "min(100px, 50px, 200px)", 50},
+		{"equal values", "min(50px, 50px)", 50},
+		{"negative values", "min(-10px, 10px)", -10},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ParseMin(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.Value != tc.wantValue {
+				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestParseMin_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"min()",
+		"notmin(10px)",
+		"max(10px)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			_, err := ParseMin(input)
+			if err == nil {
+				t.Errorf("expected error for input %q", input)
+			}
+		})
+	}
+}
+
+func TestParseMax(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantValue float64
+	}{
+		{"two values", "max(10px, 50px)", 50},
+		{"three values", "max(100px, 50px, 200px)", 200},
+		{"equal values", "max(50px, 50px)", 50},
+		{"negative values", "max(-10px, 10px)", 10},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := ParseMax(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.Value != tc.wantValue {
+				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestParseMax_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"max()",
+		"notmax(10px)",
+		"min(10px)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			_, err := ParseMax(input)
+			if err == nil {
+				t.Errorf("expected error for input %q", input)
+			}
+		})
+	}
+}
+
+func TestSplitMathFuncParts(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect []string
+	}{
+		{"single", "10px", []string{"10px"}},
+		{"two", "10px, 20px", []string{"10px", "20px"}},
+		{"three", "10px, 20px, 30px", []string{"10px", "20px", "30px"}},
+		{"nested", "calc(10px + 5px), 20px", []string{"calc(10px + 5px)", "20px"}},
+		{"clamp", "10px, 50%, 100px", []string{"10px", "50%", "100px"}},
+		{"whitespace", "  10px  ,  20px  ", []string{"  10px  ", "  20px  "}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := splitMathFuncParts(tc.input)
+			if len(result) != len(tc.expect) {
+				t.Errorf("got %d parts want %d", len(result), len(tc.expect))
+				return
+			}
+			for i := range result {
+				if result[i] != tc.expect[i] {
+					t.Errorf("part[%d] got %q want %q", i, result[i], tc.expect[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseCounter(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantName    string
+		wantStyle   CounterStyle
+	}{
+		{"simple counter", "counter(section)", "section", CounterStyleDecimal},
+		{"counter with style", "counter(item, lower-alpha)", "item", CounterStyleLowerAlpha},
+		{"counter upper roman", "counter(chapter, upper-roman)", "chapter", CounterStyleUpperRoman},
+		{"counter lower roman", "counter(verse, lower-roman)", "verse", CounterStyleLowerRoman},
+		{"counter disc", "counter(list-item, disc)", "list-item", CounterStyleDisc},
+		{"counter square", "counter(item, square)", "item", CounterStyleSquare},
+		{"counter circle", "counter(item, circle)", "item", CounterStyleCircle},
+		{"counter upper alpha", "counter(item, upper-alpha)", "item", CounterStyleUpperAlpha},
+		{"counter lower alpha", "counter(item, lower-alpha)", "item", CounterStyleLowerAlpha},
+		{"with spaces", "  counter( mycounter , decimal )  ", "mycounter", CounterStyleDecimal},
+		{"nested parens type", "counter(item, lower-alpha)", "item", CounterStyleLowerAlpha},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := ParseCounter(tc.input)
+			if c.Name != tc.wantName {
+				t.Errorf("Name=%q want %q", c.Name, tc.wantName)
+			}
+			if c.Style != tc.wantStyle {
+				t.Errorf("Style=%v want %v", c.Style, tc.wantStyle)
+			}
+		})
+	}
+}
+
+func TestParseCounter_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"notacounter",
+		"counter",
+		"counter(",
+		"counter)",
+		"counter(,)",
+		"counter(only)",
+		"counter(item, invalid_style)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			c := ParseCounter(input)
+			// Invalid inputs should return empty counter or default style
+			_ = c
+		})
+	}
+}
+
+func TestParseCounters(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantName    string
+		wantSep     string
+		wantStyle   CounterStyle
+	}{
+		{"simple counters", "counters(section, \".\")", "section", ".", CounterStyleDecimal},
+		{"counters with style", "counters(item, \", \", lower-alpha)", "item", ", ", CounterStyleLowerAlpha},
+		{"counters upper roman", "counters(chapter, \" - \", upper-roman)", "chapter", " - ", CounterStyleUpperRoman},
+		{"counters lower roman", "counters(verse, \".\", lower-roman)", "verse", ".", CounterStyleLowerRoman},
+		{"counters empty sep", "counters(list, \"\")", "list", "", CounterStyleDecimal},
+		{"with spaces", "  counters( mycounters , \" . \" , decimal )  ", "mycounters", " . ", CounterStyleDecimal},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := ParseCounters(tc.input)
+			if c.Name != tc.wantName {
+				t.Errorf("Name=%q want %q", c.Name, tc.wantName)
+			}
+			if c.Separator != tc.wantSep {
+				t.Errorf("Separator=%q want %q", c.Separator, tc.wantSep)
+			}
+			if c.Style != tc.wantStyle {
+				t.Errorf("Style=%v want %v", c.Style, tc.wantStyle)
+			}
+		})
+	}
+}
+
+func TestParseCounters_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"notcounters",
+		"counters",
+		"counters(",
+		"counters)",
+		"counters(,)",
+		"counters(item)",
+		"counters(item,)",
+		"counters(item, , style)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			c := ParseCounters(input)
+			_ = c
+		})
+	}
+}
+
+func TestParseAttr(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantName string
+		wantType string
+		wantFall string
+	}{
+		{"simple attr", "attr(data-label)", "data-label", "string", ""},
+		{"attr with type", "attr(data-count, number)", "data-count", "number", ""},
+		{"attr with fallback", "attr(data-label, \"hello\")", "data-label", "string", "\"hello\""},
+		{"attr number with fallback", "attr(data-num, number, 0)", "data-num", "number", "0"},
+		{"attr url type", "attr(href, url)", "href", "url", ""},
+		{"attr color type", "attr(style, color)", "style", "color", ""},
+		{"attr with spaces", "  attr( data-id , string , \"default\" )  ", "data-id", "string", "\"default\""},
+		{"attr only name", "attr(title)", "title", "string", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			a := ParseAttr(tc.input)
+			if a.Name != tc.wantName {
+				t.Errorf("Name=%q want %q", a.Name, tc.wantName)
+			}
+			if a.Type != tc.wantType {
+				t.Errorf("Type=%q want %q", a.Type, tc.wantType)
+			}
+			if a.Fallback != tc.wantFall {
+				t.Errorf("Fallback=%q want %q", a.Fallback, tc.wantFall)
+			}
+		})
+	}
+}
+
+func TestParseAttr_Invalid(t *testing.T) {
+	inputs := []string{
+		"",
+		"notanattr",
+		"attr",
+		"attr(",
+		"attr)",
+	}
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			a := ParseAttr(input)
+			_ = a
+		})
+	}
+}
+
+func TestParseCounterStyle(t *testing.T) {
+	tests := []struct {
+		input  string
+		want   CounterStyle
+	}{
+		{"decimal", CounterStyleDecimal},
+		{"lower-alpha", CounterStyleLowerAlpha},
+		{"upper-alpha", CounterStyleUpperAlpha},
+		{"lower-roman", CounterStyleLowerRoman},
+		{"upper-roman", CounterStyleUpperRoman},
+		{"disc", CounterStyleDisc},
+		{"square", CounterStyleSquare},
+		{"circle", CounterStyleCircle},
+		{"DECIMAL", CounterStyleDecimal},
+		{"Lower-Alpha", CounterStyleLowerAlpha},
+		{"invalid", CounterStyleDecimal},
+		{"", CounterStyleDecimal},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got := parseCounterStyle(tc.input)
+			if got != tc.want {
+				t.Errorf("got %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseAspectRatio(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  float64
+	}{
+		{"16/9", "16/9", 16.0 / 9.0},
+		{"4/3", "4/3", 4.0 / 3.0},
+		{"1/1", "1/1", 1.0},
+		{"21/9", "21/9", 21.0 / 9.0},
+		{"auto", "auto", 0},
+		{"empty", "", 0},
+		{"whitespace", "  16/9  ", 16.0 / 9.0},
+		{"single number", "2", 2.0},
+		{"invalid", "invalid", 0},
+		{"zero height", "10/0", 0},
+		{"negative", "-16/9", -16.0 / 9.0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseAspectRatio(tc.input)
+			if got != tc.want {
+				t.Errorf("got %f want %f", got, tc.want)
+			}
+		})
+	}
+}

@@ -12,6 +12,12 @@ type Rule struct {
 	MediaQuery  string // e.g., "@media (max-width: 768px)" or "" for all
 }
 
+// KeyframeRule represents a @keyframes rule: name { percentage { props } ... }.
+type KeyframeRule struct {
+	Name     string
+	Keyframes map[float64]map[string]string // percentage (0-100) -> properties
+}
+
 // Declaration represents a CSS declaration: property: value.
 type Declaration struct {
 	Property string
@@ -68,6 +74,15 @@ func Parse(sheet string) []Rule {
 					i = mediaStart
 					continue
 				}
+				if strings.HasPrefix(atName, "keyframes") {
+					// Parse @keyframes block
+					kf := parseKeyframes(sheet, i)
+					if kf != nil {
+						Keyframes = append(Keyframes, *kf)
+					}
+					i = skipBlock(sheet, j+1)
+					continue
+				}
 				// Skip the block
 				i = j + 1
 				i = skipBlock(sheet, i)
@@ -111,6 +126,98 @@ func Parse(sheet string) []Rule {
 	}
 
 	return rules
+}
+
+// Keyframes holds all parsed @keyframes rules.
+var Keyframes []KeyframeRule
+
+// parseKeyframes parses a @keyframes block starting at '@'.
+func parseKeyframes(sheet string, start int) *KeyframeRule {
+	// Find the @keyframes name
+	j := start + 1
+	for j < len(sheet) && sheet[j] != '{' && sheet[j] != ' ' && sheet[j] != '\t' {
+		j++
+	}
+	atName := strings.TrimSpace(sheet[start+1 : j])
+	// Extract keyframes name (skip "@keyframes" prefix)
+	name := strings.TrimPrefix(atName, "keyframes")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+
+	// Find opening brace of keyframes block
+	for j < len(sheet) && sheet[j] != '{' {
+		j++
+	}
+	if j >= len(sheet) {
+		return nil
+	}
+	j++ // skip '{'
+
+	kf := &KeyframeRule{
+		Name:     name,
+		Keyframes: make(map[float64]map[string]string),
+	}
+
+	// Parse keyframe blocks: percentages followed by { declarations }
+	for j < len(sheet) {
+		j = skipWhitespace(sheet, j)
+		if j >= len(sheet) {
+			break
+		}
+		if sheet[j] == '}' {
+			break
+		}
+
+		// Parse keyframe selectors: "from", "to", or "XX%"
+		selStart := j
+		for j < len(sheet) && sheet[j] != '{' && sheet[j] != '}' {
+			j++
+		}
+		selStr := strings.TrimSpace(sheet[selStart:j])
+		if sheet[j] != '{' {
+			break
+		}
+		j++ // skip '{'
+
+		// Parse declarations inside this keyframe block
+		decls, next := parseDeclarations(sheet, j)
+		j = next
+
+		// Map each percentage in the selector to the declarations
+		percentages := parseKeyframeSelectors(selStr)
+		for _, pct := range percentages {
+			if _, exists := kf.Keyframes[pct]; !exists {
+				kf.Keyframes[pct] = make(map[string]string)
+			}
+			for _, decl := range decls {
+				kf.Keyframes[pct][decl.Property] = decl.Value
+			}
+		}
+	}
+
+	return kf
+}
+
+// parseKeyframeSelectors parses a keyframe selector string like "from", "to", "50%", "0%, 100%", "25%, 75%".
+func parseKeyframeSelectors(sel string) []float64 {
+	var percentages []float64
+	parts := strings.Split(sel, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		lower := strings.ToLower(part)
+		if lower == "from" {
+			percentages = append(percentages, 0)
+		} else if lower == "to" {
+			percentages = append(percentages, 100)
+		} else if strings.HasSuffix(part, "%") {
+			if val, err := strconv.ParseFloat(strings.TrimSuffix(part, "%"), 64); err == nil {
+				percentages = append(percentages, val)
+			}
+		}
+	}
+	return percentages
 }
 
 // MatchesMediaQuery returns true if the rule's media query matches the viewport.

@@ -400,6 +400,21 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.DrawMedia(box)
 	}
 
+	// Progress element
+	if !isHidden && box.Type == layout.ProgressBox && box.Node != nil {
+		c.DrawProgress(box)
+	}
+
+	// Meter element
+	if !isHidden && box.Type == layout.MeterBox && box.Node != nil {
+		c.DrawMeter(box)
+	}
+
+	// Dialog element
+	if !isHidden && box.Type == layout.DialogBox && box.Node != nil {
+		c.DrawDialog(box)
+	}
+
 	// Children (only if not hidden)
 	if !isHidden {
 		// Sort children by z-index for proper stacking order
@@ -846,8 +861,18 @@ func (c *Canvas) DrawImage(box *layout.Box) {
 		return
 	}
 
-	// Draw the image, scaled to fit the content box
-	c.drawImageScaled(img, x, y, w, h)
+	// Get object-fit and object-position from style
+	objectFit := box.Style["object-fit"]
+	if objectFit == "" {
+		objectFit = "fill"
+	}
+	objectPosition := box.Style["object-position"]
+	if objectPosition == "" {
+		objectPosition = "50% 50%"
+	}
+
+	// Draw the image with object-fit and object-position
+	c.drawImageFitted(img, x, y, w, h, objectFit, objectPosition)
 }
 
 // loadImage fetches and decodes an image from a URL.
@@ -1185,6 +1210,228 @@ func (c *Canvas) drawImageScaled(img image.Image, x, y, w, h int) {
 				A: uint8(a >> 8),
 			}
 			c.Pixels.Set(drawX+px, drawY+py, col)
+		}
+	}
+}
+
+// drawImageFitted draws an image within a bounding box using object-fit and object-position.
+// object-fit: fill, contain, cover, none, scale-down
+// object-position: x y (keywords, percentages, or lengths)
+func (c *Canvas) drawImageFitted(img image.Image, x, y, w, h int, objectFit, objectPosition string) {
+	imgW := img.Bounds().Dx()
+	imgH := img.Bounds().Dy()
+	if imgW == 0 || imgH == 0 || w <= 0 || h <= 0 {
+		return
+	}
+
+	var srcX, srcY, srcW, srcH int // Source rectangle to draw from image
+
+	switch objectFit {
+	case "contain":
+		// Scale to fit within box, maintaining aspect ratio, leaving empty space
+		scaleX := float64(w) / float64(imgW)
+		scaleY := float64(h) / float64(imgH)
+		scale := scaleX
+		if scaleY < scale {
+			scale = scaleY
+		}
+		scaledW := int(float64(imgW) * scale)
+		scaledH := int(float64(imgH) * scale)
+		// Center in box, fill remainder with background (already drawn)
+		srcX = 0
+		srcY = 0
+		srcW = imgW
+		srcH = imgH
+		drawX := x + (w-scaledW)/2
+		drawY := y + (h-scaledH)/2
+		c.drawImagePart(img, drawX, drawY, scaledW, scaledH, srcX, srcY, srcW, srcH, 1.0)
+
+	case "cover":
+		// Scale to cover box, maintaining aspect ratio, cropping excess
+		scaleX := float64(w) / float64(imgW)
+		scaleY := float64(h) / float64(imgH)
+		scale := scaleX
+		if scaleY > scale {
+			scale = scaleY
+		}
+		scaledW := int(float64(imgW) * scale)
+		scaledH := int(float64(imgH) * scale)
+		// Apply object-position
+		posX, posY := parseObjectPosition(objectPosition, w, h, scaledW, scaledH)
+		// Clip to box and draw
+		c.drawImagePartClipped(img, x, y, w, h, posX, posY, scaledW, scaledH)
+
+	case "none":
+		// Use intrinsic size, positioned with object-position
+		srcW = imgW
+		srcH = imgH
+		posX, posY := parseObjectPosition(objectPosition, w, h, imgW, imgH)
+		c.drawImagePartClipped(img, x, y, w, h, posX, posY, imgW, imgH)
+
+	case "scale-down":
+		// Act like none or contain, whichever results in smaller image
+		if imgW > w || imgH > h {
+			// Use contain behavior
+			scaleX := float64(w) / float64(imgW)
+			scaleY := float64(h) / float64(imgH)
+			scale := scaleX
+			if scaleY < scale {
+				scale = scaleY
+			}
+			scaledW := int(float64(imgW) * scale)
+			scaledH := int(float64(imgH) * scale)
+			srcX = 0
+			srcY = 0
+			srcW = imgW
+			srcH = imgH
+			drawX := x + (w-scaledW)/2
+			drawY := y + (h-scaledH)/2
+			c.drawImagePart(img, drawX, drawY, scaledW, scaledH, srcX, srcY, srcW, srcH, 1.0)
+		} else {
+			// Use intrinsic size
+			posX, posY := parseObjectPosition(objectPosition, w, h, imgW, imgH)
+			c.drawImagePartClipped(img, x, y, w, h, posX, posY, imgW, imgH)
+		}
+
+	case "fill":
+		// Default: stretch to fill box (ignore aspect ratio)
+		srcX = 0
+		srcY = 0
+		srcW = imgW
+		srcH = imgH
+		c.drawImagePart(img, x, y, w, h, srcX, srcY, srcW, srcH, 1.0)
+
+	default:
+		// Default to fill
+		srcX = 0
+		srcY = 0
+		srcW = imgW
+		srcH = imgH
+		c.drawImagePart(img, x, y, w, h, srcX, srcY, srcW, srcH, 1.0)
+	}
+}
+
+// parseObjectPosition parses object-position value and returns offsetX, offsetY.
+// object-position: <position> where <position> = [left|center|right] || [top|center|bottom]
+// Also supports percentages and pixel values.
+func parseObjectPosition(pos string, boxW, boxH, imgW, imgH int) (offsetX, offsetY int) {
+	// Default to center
+	offsetX = (boxW - imgW) / 2
+	offsetY = (boxH - imgH) / 2
+
+	if pos == "" {
+		return offsetX, offsetY
+	}
+
+	parts := strings.Fields(pos)
+	if len(parts) == 0 {
+		return offsetX, offsetY
+	}
+
+	// Parse horizontal position (first value: left, center, right, or length/%)
+	first := parts[0]
+	// Parse vertical position (second value: top, center, bottom, or length/%)
+	var second string
+	if len(parts) >= 2 {
+		second = parts[1]
+	} else {
+		// Single value: could be a keyword like "center" or "50%"
+		// If it's a single keyword, it applies to both axes
+		first = pos
+	}
+
+	// Parse first value (horizontal)
+	switch strings.ToLower(first) {
+	case "left":
+		offsetX = 0
+	case "right":
+		offsetX = boxW - imgW
+	case "center":
+		offsetX = (boxW - imgW) / 2
+	default:
+		// Could be a percentage or length
+		if strings.HasSuffix(first, "%") {
+			if v, err := strconv.ParseFloat(strings.TrimSuffix(first, "%"), 64); err == nil {
+				offsetX = int(float64(boxW-imgW) * v / 100)
+			}
+		} else if l := css.ParseLength(first); l.Unit == css.UnitPx {
+			offsetX = int(l.Value)
+		}
+	}
+
+	// Parse second value (vertical) if present
+	if second != "" {
+		switch strings.ToLower(second) {
+		case "top":
+			offsetY = 0
+		case "bottom":
+			offsetY = boxH - imgH
+		case "center":
+			offsetY = (boxH - imgH) / 2
+		default:
+			// Could be a percentage or length
+			if strings.HasSuffix(second, "%") {
+				if v, err := strconv.ParseFloat(strings.TrimSuffix(second, "%"), 64); err == nil {
+					offsetY = int(float64(boxH-imgH) * v / 100)
+				}
+			} else if l := css.ParseLength(second); l.Unit == css.UnitPx {
+				offsetY = int(l.Value)
+			}
+		}
+	} else if len(parts) == 1 {
+		// Single value is vertical if first was horizontal keyword
+		if strings.ToLower(first) == "left" || strings.ToLower(first) == "right" {
+			// Second value is vertical
+			switch strings.ToLower(first) {
+			case "top":
+				offsetY = 0
+			case "bottom":
+				offsetY = boxH - imgH
+			}
+		}
+	}
+
+	return offsetX, offsetY
+}
+
+// drawImagePartClipped draws an image portion with clipping to fit the target bounds.
+func (c *Canvas) drawImagePartClipped(img image.Image, x, y, w, h int, srcX, srcY, srcW, srcH int) {
+	if srcW <= 0 || srcH <= 0 || w <= 0 || h <= 0 {
+		return
+	}
+
+	// Compute how much of the source image extends beyond the box
+	// and should be clipped
+	scaleX := float64(w) / float64(srcW)
+	scaleY := float64(h) / float64(srcH)
+
+	// Draw the image, clipping to box bounds
+	for py := 0; py < h; py++ {
+		// Source Y in image pixels
+		srcYPos := srcY + int(float64(py)/scaleY)
+		if srcYPos < 0 {
+			srcYPos = 0
+		}
+		if srcYPos >= img.Bounds().Dy() {
+			srcYPos = img.Bounds().Dy() - 1
+		}
+		for px := 0; px < w; px++ {
+			// Source X in image pixels
+			srcXPos := srcX + int(float64(px)/scaleX)
+			if srcXPos < 0 {
+				srcXPos = 0
+			}
+			if srcXPos >= img.Bounds().Dx() {
+				srcXPos = img.Bounds().Dx() - 1
+			}
+			r, g, b, a := img.At(srcXPos, srcYPos).RGBA()
+			col := color.RGBA{
+				R: uint8(r >> 8),
+				G: uint8(g >> 8),
+				B: uint8(b >> 8),
+				A: uint8(a >> 8),
+			}
+			c.Pixels.Set(x+px, y+py, col)
 		}
 	}
 }
@@ -1578,6 +1825,182 @@ func (c *Canvas) DrawMedia(box *layout.Box) {
 		barH := 8 + i*4
 		c.FillRect(volX+8+i*14, controlsY+controlsH-barH-4, 8, barH, css.Color{R: 200, G: 200, B: 200, A: 255})
 	}
+}
+
+// DrawProgress renders a <progress> element as a progress bar.
+func (c *Canvas) DrawProgress(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 200
+		box.ContentW = 200
+	}
+	if h <= 0 {
+		h = 20
+		box.ContentH = 20
+	}
+
+	// Get value and max attributes
+	value := 0.0
+	max := 100.0
+	if box.Node != nil {
+		if valStr := box.Node.GetAttribute("value"); valStr != "" {
+			if v, err := strconv.ParseFloat(valStr, 64); err == nil {
+				value = v
+			}
+		}
+		if maxStr := box.Node.GetAttribute("max"); maxStr != "" {
+			if m, err := strconv.ParseFloat(maxStr, 64); err == nil && m > 0 {
+				max = m
+			}
+		}
+	}
+
+	// Draw track (background)
+	trackColor := css.Color{R: 220, G: 220, B: 220, A: 255}
+	c.FillRect(x, y, w, h, trackColor)
+
+	// Draw progress bar
+	progressWidth := int(float64(w) * (value / max))
+	if progressWidth > w {
+		progressWidth = w
+	}
+	barColor := css.Color{R: 0, G: 122, B: 255, A: 255}
+	c.FillRect(x, y, progressWidth, h, barColor)
+
+	// Draw border
+	borderColor := css.Color{R: 180, G: 180, B: 180, A: 255}
+	c.DrawBorder(x, y, w, h, 1, borderColor)
+}
+
+// DrawMeter renders a <meter> element as a gauge/progress indicator.
+func (c *Canvas) DrawMeter(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 200
+		box.ContentW = 200
+	}
+	if h <= 0 {
+		h = 20
+		box.ContentH = 20
+	}
+
+	// Get value, min, max, low, high, optimum attributes
+	value := 50.0
+	min := 0.0
+	max := 100.0
+	low := 25.0
+	high := 75.0
+	optimum := 50.0
+
+	if box.Node != nil {
+		if valStr := box.Node.GetAttribute("value"); valStr != "" {
+			if v, err := strconv.ParseFloat(valStr, 64); err == nil {
+				value = v
+			}
+		}
+		if minStr := box.Node.GetAttribute("min"); minStr != "" {
+			if m, err := strconv.ParseFloat(minStr, 64); err == nil {
+				min = m
+			}
+		}
+		if maxStr := box.Node.GetAttribute("max"); maxStr != "" {
+			if m, err := strconv.ParseFloat(maxStr, 64); err == nil {
+				max = m
+			}
+		}
+		if lowStr := box.Node.GetAttribute("low"); lowStr != "" {
+			if l, err := strconv.ParseFloat(lowStr, 64); err == nil {
+				low = l
+			}
+		}
+		if highStr := box.Node.GetAttribute("high"); highStr != "" {
+			if h, err := strconv.ParseFloat(highStr, 64); err == nil {
+				high = h
+			}
+		}
+		if optStr := box.Node.GetAttribute("optimum"); optStr != "" {
+			if o, err := strconv.ParseFloat(optStr, 64); err == nil {
+				optimum = o
+			}
+		}
+	}
+
+	// Determine color based on value region
+	barColor := css.Color{R: 0, G: 180, B: 0, A: 255} // green for optimum
+	if value < low || value > high {
+		if (optimum >= low && optimum <= high) {
+			// optimum in middle - value is in outer region (bad)
+			barColor = css.Color{R: 255, G: 100, B: 100, A: 255} // red
+		}
+	} else if value < optimum-10 || value > optimum+10 {
+		barColor = css.Color{R: 255, G: 200, B: 0, A: 255} // yellow
+	}
+
+	// Draw track (background)
+	trackColor := css.Color{R: 220, G: 220, B: 220, A: 255}
+	c.FillRect(x, y, w, h, trackColor)
+
+	// Draw meter bar
+	meterWidth := int(float64(w) * ((value - min) / (max - min)))
+	if meterWidth > w {
+		meterWidth = w
+	}
+	if meterWidth < 0 {
+		meterWidth = 0
+	}
+	c.FillRect(x, y, meterWidth, h, barColor)
+
+	// Draw border
+	borderColor := css.Color{R: 180, G: 180, B: 180, A: 255}
+	c.DrawBorder(x, y, w, h, 1, borderColor)
+}
+
+// DrawDialog renders a <dialog> element with a modal backdrop.
+func (c *Canvas) DrawDialog(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 400
+		box.ContentW = 400
+	}
+	if h <= 0 {
+		h = 200
+		box.ContentH = 200
+	}
+
+	// Draw semi-transparent backdrop if open
+	isOpen := true
+	if box.Node != nil {
+		if openStr := box.Node.GetAttribute("open"); openStr == "" {
+			isOpen = false
+		}
+	}
+
+	if isOpen {
+		// Draw backdrop over entire viewport (approximation)
+		backdropColor := css.Color{R: 0, G: 0, B: 0, A: 128}
+		// Draw a subtle overlay behind the dialog
+		c.FillRect(x-10, y-10, w+20, h+20, backdropColor)
+	}
+
+	// Draw dialog box background
+	dialogBg := css.Color{R: 255, G: 255, B: 255, A: 255}
+	c.FillRect(x, y, w, h, dialogBg)
+
+	// Draw border
+	borderColor := css.Color{R: 100, G: 100, B: 100, A: 255}
+	c.DrawBorder(x, y, w, h, 2, borderColor)
 }
 
 // drawLinearGradient draws a linear gradient filling the given rectangle.

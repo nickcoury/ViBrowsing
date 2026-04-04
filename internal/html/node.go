@@ -1,6 +1,9 @@
 package html
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // NodeType represents the type of a DOM node.
 type NodeType int
@@ -144,6 +147,417 @@ func (n *Node) GetAttribute(key string) string {
 		}
 	}
 	return ""
+}
+
+// SetAttribute sets or replaces an attribute on the node.
+func (n *Node) SetAttribute(key, value string) {
+	for i, attr := range n.Attributes {
+		if attr.Key == key {
+			n.Attributes[i].Value = value
+			return
+		}
+	}
+	n.Attributes = append(n.Attributes, Attribute{Key: key, Value: value})
+}
+
+// RemoveAttribute removes an attribute from the node.
+func (n *Node) RemoveAttribute(key string) {
+	for i, attr := range n.Attributes {
+		if attr.Key == key {
+			n.Attributes = append(n.Attributes[:i], n.Attributes[i+1:]...)
+			return
+		}
+	}
+}
+
+// HasAttribute returns true if the node has the given attribute.
+func (n *Node) HasAttribute(key string) bool {
+	for _, attr := range n.Attributes {
+		if attr.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// GetElementsByClassName returns all descendant elements with the given class name.
+func (n *Node) GetElementsByClassName(className string) []*Node {
+	var results []*Node
+	n.getElementsByClassName(className, &results)
+	return results
+}
+
+func (n *Node) getElementsByClassName(className string, results *[]*Node) {
+	if n.Type == NodeElement {
+		class := n.GetAttribute("class")
+		for _, c := range splitClasses(class) {
+			if c == className {
+				*results = append(*results, n)
+				break
+			}
+		}
+	}
+	for _, child := range n.Children {
+		child.getElementsByClassName(className, results)
+	}
+}
+
+// GetElementsByTagName returns all descendant elements with the given tag name.
+func (n *Node) GetElementsByTagName(tagName string) []*Node {
+	var results []*Node
+	n.getElementsByTagName(strings.ToLower(tagName), &results)
+	return results
+}
+
+func (n *Node) getElementsByTagName(tagName string, results *[]*Node) {
+	if n.Type == NodeElement {
+		if strings.ToLower(n.TagName) == tagName {
+			*results = append(*results, n)
+		}
+	}
+	for _, child := range n.Children {
+		child.getElementsByTagName(tagName, results)
+	}
+}
+
+// QuerySelectorAll returns all descendant elements matching the CSS selector.
+// Supports: tagname, #id, .class, [attr], [attr=value], [attr~=value], [attr|=value],
+// and comma-separated selectors.
+func (n *Node) QuerySelectorAll(selector string) []*Node {
+	var results []*Node
+	// Split comma-separated selectors
+	for _, sel := range strings.Split(selector, ",") {
+		sel = strings.TrimSpace(sel)
+		if sel == "" {
+			continue
+		}
+		n.querySelectorAll(sel, &results)
+	}
+	return results
+}
+
+func (n *Node) querySelectorAll(selector string, results *[]*Node) {
+	// Simple selector matching
+	if matchSelector(n, selector) {
+		*results = append(*results, n)
+	}
+
+	for _, child := range n.Children {
+		child.querySelectorAll(selector, results)
+	}
+}
+
+// QuerySelector returns the first descendant element matching the CSS selector.
+func (n *Node) QuerySelector(selector string) *Node {
+	nodes := n.QuerySelectorAll(selector)
+	if len(nodes) > 0 {
+		return nodes[0]
+	}
+	return nil
+}
+
+// GetElementById returns the first descendant element with the given id attribute.
+func (n *Node) GetElementById(id string) *Node {
+	if n.Type == NodeElement {
+		if n.GetAttribute("id") == id {
+			return n
+		}
+	}
+	for _, child := range n.Children {
+		if found := child.GetElementById(id); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// ClassList returns a ClassList-like view of the element's classes.
+// Each returned ClassEntry has Add, Remove, Toggle, Contains methods.
+func (n *Node) ClassList() *ClassList {
+	return &ClassList{node: n}
+}
+
+// ClassList provides DOM classList API for a node.
+type ClassList struct {
+	node *Node
+}
+
+// getClasses returns the current class list as a slice.
+func (cl *ClassList) getClasses() []string {
+	class := cl.node.GetAttribute("class")
+	if class == "" {
+		return nil
+	}
+	return splitClasses(class)
+}
+
+// String returns the class attribute value.
+func (cl *ClassList) String() string {
+	return cl.node.GetAttribute("class")
+}
+
+// Contains returns true if the class is present.
+func (cl *ClassList) Contains(class string) bool {
+	for _, c := range cl.getClasses() {
+		if c == class {
+			return true
+		}
+	}
+	return false
+}
+
+// Add adds the given class names.
+func (cl *ClassList) Add(classes ...string) {
+	current := cl.getClasses()
+	for _, c := range classes {
+		if !containsString(current, c) {
+			current = append(current, c)
+		}
+	}
+	cl.node.SetAttribute("class", strings.Join(current, " "))
+}
+
+// Remove removes the given class names.
+func (cl *ClassList) Remove(classes ...string) {
+	current := cl.getClasses()
+	var result []string
+	for _, c := range current {
+		if !containsString(classes, c) {
+			result = append(result, c)
+		}
+	}
+	cl.node.SetAttribute("class", strings.Join(result, " "))
+}
+
+// Toggle removes the class if present, adds it if not.
+func (cl *ClassList) Toggle(class string) {
+	if cl.Contains(class) {
+		cl.Remove(class)
+	} else {
+		cl.Add(class)
+	}
+}
+
+// Replace replaces one class with another.
+func (cl *ClassList) Replace(oldClass, newClass string) {
+	current := cl.getClasses()
+	for i, c := range current {
+		if c == oldClass {
+			current[i] = newClass
+			break
+		}
+	}
+	cl.node.SetAttribute("class", strings.Join(current, " "))
+}
+
+// Item returns the class at the given index, or "".
+func (cl *ClassList) Item(index int) string {
+	classes := cl.getClasses()
+	if index >= 0 && index < len(classes) {
+		return classes[index]
+	}
+	return ""
+}
+
+// Length returns the number of classes.
+func (cl *ClassList) Length() int {
+	return len(cl.getClasses())
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// textContent returns the text content of the node and all descendants.
+func (n *Node) textContent() string {
+	if n.Type == NodeText {
+		return n.Data
+	}
+	var text string
+	for _, child := range n.Children {
+		text += child.textContent()
+	}
+	return text
+}
+
+// setTextContent sets the text content, removing all children and adding a text node.
+func (n *Node) setTextContent(text string) {
+	// Remove all children
+	n.Children = nil
+	if text != "" {
+		n.Children = []*Node{NewText(text)}
+	}
+}
+
+// TextContent gets/sets the text content of the node.
+func (n *Node) TextContent() string {
+	return n.textContent()
+}
+
+// SetTextContent sets the text content of the node.
+func (n *Node) SetTextContent(text string) {
+	n.setTextContent(text)
+}
+
+// InnerHTML returns the inner HTML of the node.
+func (n *Node) InnerHTML() string {
+	if n.Type == NodeText {
+		return ""
+	}
+	var html string
+	for _, child := range n.Children {
+		html += child.OuterHTML()
+	}
+	return html
+}
+
+// SetInnerHTML sets the inner HTML by parsing the given HTML string.
+func (n *Node) SetInnerHTML(htmlStr string) {
+	// Remove all children
+	n.Children = nil
+	// Parse the HTML
+	tokens := Tokenize(htmlStr)
+	parser := NewParser(tokens)
+	frag := parser.Parse()
+	// Move children from parsed fragment to this node
+	for _, child := range frag.Children {
+		child.Parent = n
+		n.Children = append(n.Children, child)
+	}
+}
+
+// OuterHTML returns the outer HTML of the node.
+func (n *Node) OuterHTML() string {
+	if n.Type == NodeText {
+		return n.Data
+	}
+	if n.Type == NodeComment {
+		return "<!--" + n.Data + "-->"
+	}
+	var html string
+	html += "<" + n.TagName
+	for _, attr := range n.Attributes {
+		html += " " + attr.Key + "=\"" + attr.Value + "\""
+	}
+	html += ">"
+	for _, child := range n.Children {
+		html += child.OuterHTML()
+	}
+	html += "</" + n.TagName + ">"
+	return html
+}
+
+// AppendChild adds a child node to the end of the parent's children list.
+func (n *Node) AppendChild(child *Node) {
+	child.Parent = n
+	n.Children = append(n.Children, child)
+}
+
+// RemoveChild removes the child node from the parent's children list.
+func (n *Node) RemoveChild(child *Node) error {
+	for i, c := range n.Children {
+		if c == child {
+			n.Children = append(n.Children[:i], n.Children[i+1:]...)
+			child.Parent = nil
+			return nil
+		}
+	}
+	return fmt.Errorf("node not found")
+}
+
+// InsertBefore inserts a node before the reference node in the parent's children list.
+// If ref is nil, inserts at the end.
+func (n *Node) InsertBefore(newNode, ref *Node) {
+	if ref == nil {
+		n.AppendChild(newNode)
+		return
+	}
+	for i, c := range n.Children {
+		if c == ref {
+			newNode.Parent = n
+			// Insert at position i
+			n.Children = append(n.Children[:i], append([]*Node{newNode}, n.Children[i:]...)...)
+			return
+		}
+	}
+}
+
+// ReplaceChild replaces a child node with a new node.
+func (n *Node) ReplaceChild(newNode, oldNode *Node) {
+	for i, c := range n.Children {
+		if c == oldNode {
+			newNode.Parent = n
+			n.Children[i] = newNode
+			oldNode.Parent = nil
+			return
+		}
+	}
+}
+
+// CloneNode creates a shallow copy of the node.
+func (n *Node) CloneNode() *Node {
+	clone := &Node{
+		Type:       n.Type,
+		TagName:    n.TagName,
+		Data:       n.Data,
+		Attributes: make([]Attribute, len(n.Attributes)),
+		Parent:     nil,
+		Children:   nil,
+	}
+	copy(clone.Attributes, n.Attributes)
+	return clone
+}
+
+// CloneNodeDeep creates a deep copy of the node and all descendants.
+func (n *Node) CloneNodeDeep() *Node {
+	clone := n.CloneNode()
+	for _, child := range n.Children {
+		clonedChild := child.CloneNodeDeep()
+		clonedChild.Parent = clone
+		clone.Children = append(clone.Children, clonedChild)
+	}
+	return clone
+}
+
+// dataset returns a map of data-* attributes for easy access.
+func (n *Node) dataset() map[string]string {
+	result := make(map[string]string)
+	for _, attr := range n.Attributes {
+		if strings.HasPrefix(attr.Key, "data-") {
+			result[attr.Key[5:]] = attr.Value
+		}
+	}
+	return result
+}
+
+// Dataset returns a Dataset-like map for data-* attributes.
+func (n *Node) Dataset() *Dataset {
+	return &Dataset{node: n}
+}
+
+// Dataset provides access to data-* attributes.
+type Dataset struct {
+	node *Node
+}
+
+// Get returns the value of a data-* attribute (without data- prefix).
+func (d *Dataset) Get(name string) string {
+	return d.node.GetAttribute("data-" + name)
+}
+
+// Set sets the value of a data-* attribute.
+func (d *Dataset) Set(name, value string) {
+	d.node.SetAttribute("data-"+name, value)
+}
+
+// Remove removes a data-* attribute.
+func (d *Dataset) Remove(name string) {
+	d.node.RemoveAttribute("data-" + name)
 }
 
 // InsideTemplate returns true if this node is a descendant of a <template> element.

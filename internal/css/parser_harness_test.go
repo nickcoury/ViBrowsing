@@ -499,6 +499,295 @@ func BenchmarkParser_AtomicDecls(b *testing.B) {
 	decls := "color: red; font-size: 16px; margin: 10px; padding: 5px; background: white; border: 1px solid #ddd;"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ParseInline(decls)
+		Parse(decls)
+	}
+}
+
+// TestParser_Keyframes tests @keyframes parsing.
+func TestParser_Keyframes(t *testing.T) {
+	// Reset global Keyframes before test
+	Keyframes = nil
+
+	tests := []struct {
+		name         string
+		input        string
+		wantName     string
+		wantPcts     []float64
+		wantProps    map[float64]map[string]string
+	}{
+		{
+			name:     "simple from-to",
+			input:    "@keyframes fade { from { opacity: 0; } to { opacity: 1; } }",
+			wantName: "fade",
+			wantPcts: []float64{0, 100},
+			wantProps: map[float64]map[string]string{
+				0:   {"opacity": "0"},
+				100: {"opacity": "1"},
+			},
+		},
+		{
+			name:     "percentage keyframes",
+			input:    "@keyframes slide { 0% { left: 0; } 50% { left: 100px; } 100% { left: 0; } }",
+			wantName: "slide",
+			wantPcts: []float64{0, 50, 100},
+			wantProps: map[float64]map[string]string{
+				0:   {"left": "0"},
+				50:  {"left": "100px"},
+				100: {"left": "0"},
+			},
+		},
+		{
+			name:     "multiple selectors same block",
+			input:    "@keyframes test { 0%, 100% { color: red; } 50% { color: blue; } }",
+			wantName: "test",
+			wantPcts: []float64{0, 100, 50},
+			wantProps: map[float64]map[string]string{
+				0:   {"color": "red"},
+				100: {"color": "red"},
+				50:  {"color": "blue"},
+			},
+		},
+		{
+			name:     "with webkit prefix",
+			input:    "@-webkit-keyframes pulse { from { opacity: 1; } to { opacity: 0; } }",
+			wantName: "pulse",
+			wantPcts: []float64{0, 100},
+			wantProps: map[float64]map[string]string{
+				0:   {"opacity": "1"},
+				100: {"opacity": "0"},
+			},
+		},
+		{
+			name:     "multiple properties per keyframe",
+			input:    "@keyframes move { 0% { left: 0; top: 0; } 100% { left: 100px; top: 100px; } }",
+			wantName: "move",
+			wantPcts: []float64{0, 100},
+			wantProps: map[float64]map[string]string{
+				0:   {"left": "0", "top": "0"},
+				100: {"left": "100px", "top": "100px"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			Keyframes = nil // Reset
+			Parse(tc.input)
+			if len(Keyframes) != 1 {
+				t.Fatalf("got %d keyframes, want 1", len(Keyframes))
+			}
+			kf := Keyframes[0]
+			if kf.Name != tc.wantName {
+				t.Errorf("name=%q want %q", kf.Name, tc.wantName)
+			}
+			for _, pct := range tc.wantPcts {
+				if _, exists := kf.Keyframes[pct]; !exists {
+					t.Errorf("missing keyframe at %f%%", pct)
+				} else {
+					for prop, wantVal := range tc.wantProps[pct] {
+						if gotVal := kf.Keyframes[pct][prop]; gotVal != wantVal {
+							t.Errorf("at %f%%, %s=%q want %q", pct, prop, gotVal, wantVal)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestParser_KeyframesGlobal tests that Keyframes accumulates across multiple Parse calls.
+func TestParser_KeyframesGlobal(t *testing.T) {
+	Keyframes = nil
+	Parse("@keyframes a { from { opacity: 0; } to { opacity: 1; } }")
+	Parse("@keyframes b { from { width: 0; } to { width: 100px; } }")
+	if len(Keyframes) != 2 {
+		t.Errorf("got %d keyframes, want 2", len(Keyframes))
+	}
+	if Keyframes[0].Name != "a" || Keyframes[1].Name != "b" {
+		t.Errorf("unexpected keyframe names: %v", Keyframes)
+	}
+}
+
+// TestParseKeyframeSelectors tests the selector parsing logic.
+func TestParseKeyframeSelectors(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []float64
+	}{
+		{"from", []float64{0}},
+		{"to", []float64{100}},
+		{"0%", []float64{0}},
+		{"100%", []float64{100}},
+		{"50%", []float64{50}},
+		{"0%, 100%", []float64{0, 100}},
+		{"25%, 50%, 75%", []float64{25, 50, 75}},
+		{"FROM", []float64{0}},
+		{"TO", []float64{100}},
+		{"0%, 50%, 100%", []float64{0, 50, 100}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			result := parseKeyframeSelectors(tc.input)
+			if len(result) != len(tc.expected) {
+				t.Errorf("got %v len=%d want %v", result, len(result), tc.expected)
+				return
+			}
+			for i, v := range result {
+				if v != tc.expected[i] {
+					t.Errorf("got %v want %v", result, tc.expected)
+					return
+				}
+			}
+		})
+	}
+}
+
+// TestStyle_AnimationProperties tests that animation properties are in defaults and applied correctly.
+func TestStyle_AnimationProperties(t *testing.T) {
+	props := ComputeStyle("div", "", "", nil, nil)
+
+	// Check defaults
+	if props["animation-name"] != "none" {
+		t.Errorf("animation-name default=%q want %q", props["animation-name"], "none")
+	}
+	if props["animation-duration"] != "0s" {
+		t.Errorf("animation-duration default=%q want %q", props["animation-duration"], "0s")
+	}
+	if props["animation-timing-function"] != "ease" {
+		t.Errorf("animation-timing-function default=%q want %q", props["animation-timing-function"], "ease")
+	}
+	if props["animation-delay"] != "0s" {
+		t.Errorf("animation-delay default=%q want %q", props["animation-delay"], "0s")
+	}
+	if props["animation-iteration-count"] != "1" {
+		t.Errorf("animation-iteration-count default=%q want %q", props["animation-iteration-count"], "1")
+	}
+	if props["animation-direction"] != "normal" {
+		t.Errorf("animation-direction default=%q want %q", props["animation-direction"], "normal")
+	}
+	if props["animation-fill-mode"] != "none" {
+		t.Errorf("animation-fill-mode default=%q want %q", props["animation-fill-mode"], "none")
+	}
+}
+
+// TestStyle_AnimationShorthand tests the animation shorthand parsing.
+func TestStyle_AnimationShorthand(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		expected map[string]string
+	}{
+		{
+			name:  "name only",
+			value: "fade",
+			expected: map[string]string{
+				"animation-name":        "fade",
+				"animation-duration":    "0s",
+				"animation-timing-function": "ease",
+				"animation-delay":       "0s",
+				"animation-iteration-count": "1",
+				"animation-direction":   "normal",
+				"animation-fill-mode":   "none",
+			},
+		},
+		{
+			name:  "name and duration",
+			value: "slide 2s",
+			expected: map[string]string{
+				"animation-name":        "slide",
+				"animation-duration":    "2s",
+				"animation-timing-function": "ease",
+				"animation-delay":       "0s",
+				"animation-iteration-count": "1",
+				"animation-direction":   "normal",
+				"animation-fill-mode":   "none",
+			},
+		},
+		{
+			name:  "full animation",
+			value: "fadeIn 1s ease-in 0.5s infinite alternate forwards",
+			expected: map[string]string{
+				"animation-name":        "fadeIn",
+				"animation-duration":    "1s",
+				"animation-timing-function": "ease-in",
+				"animation-delay":       "0.5s",
+				"animation-iteration-count": "infinite",
+				"animation-direction":   "alternate",
+				"animation-fill-mode":   "forwards",
+			},
+		},
+		{
+			name:  "with numeric iteration count",
+			value: "spin 3s linear 1s 3 normal",
+			expected: map[string]string{
+				"animation-name":        "spin",
+				"animation-duration":    "3s",
+				"animation-timing-function": "linear",
+				"animation-delay":       "1s",
+				"animation-iteration-count": "3",
+				"animation-direction":   "normal",
+				"animation-fill-mode":   "none",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			props := map[string]string{
+				"animation-name":        "none",
+				"animation-duration":    "0s",
+				"animation-timing-function": "ease",
+				"animation-delay":       "0s",
+				"animation-iteration-count": "1",
+				"animation-direction":   "normal",
+				"animation-fill-mode":   "none",
+			}
+			parseAnimationShorthand(props, tc.value)
+			for k, v := range tc.expected {
+				if props[k] != v {
+					t.Errorf("animation shorthand %q: %s=%q want %q", tc.value, k, props[k], v)
+				}
+			}
+		})
+	}
+}
+
+// TestStyle_AnimationIndividualProps tests that individual animation properties override defaults.
+func TestStyle_AnimationIndividualProps(t *testing.T) {
+	css := `div { animation-name: pulse; animation-duration: 2s; animation-iteration-count: infinite; }`
+	rules := Parse(css)
+	props := ComputeStyle("div", "", "", nil, rules)
+	if props["animation-name"] != "pulse" {
+		t.Errorf("animation-name=%q want %q", props["animation-name"], "pulse")
+	}
+	if props["animation-duration"] != "2s" {
+		t.Errorf("animation-duration=%q want %q", props["animation-duration"], "2s")
+	}
+	if props["animation-iteration-count"] != "infinite" {
+		t.Errorf("animation-iteration-count=%q want %q", props["animation-iteration-count"], "infinite")
+	}
+}
+
+// TestStyle_AnimationWithRules tests animation applied through rules.
+func TestStyle_AnimationWithRules(t *testing.T) {
+	Keyframes = nil
+	css := `
+@keyframes myanim {
+	0% { opacity: 0; }
+	100% { opacity: 1; }
+}
+div { animation: fade 1s ease; }
+`
+	rules := Parse(css)
+	props := ComputeStyle("div", "", "", nil, rules)
+	if props["animation-name"] != "fade" {
+		t.Errorf("animation-name=%q want %q", props["animation-name"], "fade")
+	}
+	if props["animation-duration"] != "1s" {
+		t.Errorf("animation-duration=%q want %q", props["animation-duration"], "1s")
+	}
+	// Verify keyframe was parsed
+	if len(Keyframes) != 1 || Keyframes[0].Name != "myanim" {
+		t.Errorf("keyframes not parsed correctly: %v", Keyframes)
 	}
 }

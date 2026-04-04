@@ -1,6 +1,9 @@
 package css
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Specificity represents a CSS selector's specificity (a, b, c).
 type Specificity struct {
@@ -40,6 +43,12 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"letter-spacing":  "0",
 		"word-spacing":    "0",
 		"text-transform":  "none",
+		"font-variant":    "normal",
+		"unicode-bidi":   "normal",
+		"direction":      "ltr",
+		"writing-mode":   "horizontal-tb",
+		"tab-size":       "8",
+		"quotes":         "auto",
 		"vertical-align":  "baseline",
 		"opacity":         "1",
 		"white-space":     "normal",
@@ -55,10 +64,16 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"float":           "none",
 		"z-index":         "auto",
 		"flex-direction":  "row",
+		"flex-wrap":       "nowrap",
+		"flex-flow":       "row nowrap",
 		"justify-content": "flex-start",
 		"align-items":     "stretch",
-		"flex-wrap":       "nowrap",
+		"align-content":   "normal",
 		"gap":             "0",
+		"order":           "0",
+		"flex-grow":       "0",
+		"flex-shrink":     "1",
+		"flex-basis":      "auto",
 		"border-radius":   "0",
 		"background-color": "transparent",
 		"background-image": "none",
@@ -77,6 +92,39 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"text-shadow":     "none",
 		"text-overflow":   "clip",
 		"content":         "normal",
+		// Animation properties
+		"animation-name":        "none",
+		"animation-duration":    "0s",
+		"animation-timing-function": "ease",
+		"animation-delay":       "0s",
+		"animation-iteration-count": "1",
+		"animation-direction":   "normal",
+		"animation-fill-mode":   "none",
+		// Image sizing properties
+		"aspect-ratio":    "auto",
+		"object-fit":       "fill",
+		"object-position":  "50% 50%",
+		// Filter and effect properties
+		"filter":           "none",
+		"backdrop-filter":  "none",
+		"clip-path":        "none",
+		"clip":             "auto",
+		// Column properties
+		"column-width":        "auto",
+		"column-count":        "1",
+		"column-gap":          "normal",
+		"column-rule-width":   "medium",
+		"column-rule-style":  "none",
+		"column-rule-color":   "black",
+		// Break properties
+		"break-inside":     "auto",
+		"break-before":     "auto",
+		"break-after":      "auto",
+		// Transition
+		"transition-property":           "none",
+		"transition-duration":           "0s",
+		"transition-timing-function":    "ease",
+		"transition-delay":              "0s",
 	}
 
 	// Element-specific default styles (HTML5 user agent defaults)
@@ -177,6 +225,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 
 // matchSelector returns true if the element matches the CSS selector.
 // Supports: tag, .class, #id, tag.class, tag#id, [attr], [attr=value], [attr~=value], [attr|=value]
+// Also supports combinators: descendant (space), child (>), adjacent sibling (+), general sibling (~)
 func matchSelector(tagName, class, id, selector string) bool {
 	sel := selector
 
@@ -260,19 +309,8 @@ func matchSelector(tagName, class, id, selector string) bool {
 		return false
 	}
 
-	// Check attribute selector if present
-	if attrName != "" {
-		// For attribute matching, we need the actual attribute value from node
-		// But this function only receives tagName, class, id
-		// We'll need to check this at a higher level
-		// For now, return true if attr is present (for [attr] case)
-		if attrOp == "" {
-			// Just checking presence - assume true for now
-		} else if attrOp == "=" {
-			// Exact match - needs attribute value
-		}
-	}
-
+	// Attribute selectors always pass at this level since we don't have node attributes here
+	// The actual attribute matching is done at a higher level via matchAttributeSelector
 	return true
 }
 
@@ -486,6 +524,18 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["text-indent"] = value
 	case "text-transform":
 		props["text-transform"] = value
+	case "font-variant":
+		props["font-variant"] = value
+	case "unicode-bidi":
+		props["unicode-bidi"] = value
+	case "direction":
+		props["direction"] = value
+	case "writing-mode":
+		props["writing-mode"] = value
+	case "tab-size":
+		props["tab-size"] = value
+	case "quotes":
+		props["quotes"] = value
 	case "opacity":
 		props["opacity"] = value
 	case "vertical-align":
@@ -536,6 +586,32 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["flex-wrap"] = value
 	case "gap":
 		props["gap"] = value
+	case "flex-flow":
+		props["flex-flow"] = value
+		// Parse into direction and wrap
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			lower := strings.ToLower(part)
+			if lower == "row" || lower == "column" || lower == "row-reverse" || lower == "column-reverse" {
+				props["flex-direction"] = part
+			} else if lower == "nowrap" || lower == "wrap" || lower == "wrap-reverse" {
+				props["flex-wrap"] = part
+			}
+		}
+	case "flex-direction":
+		props["flex-direction"] = value
+	case "flex-wrap":
+		props["flex-wrap"] = value
+	case "align-content":
+		props["align-content"] = value
+	case "order":
+		props["order"] = value
+	case "flex-grow":
+		props["flex-grow"] = value
+	case "flex-shrink":
+		props["flex-shrink"] = value
+	case "flex-basis":
+		props["flex-basis"] = value
 	case "border-radius":
 		props["border-radius"] = value
 	case "outline-width":
@@ -567,5 +643,228 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["text-overflow"] = value
 	case "content":
 		props["content"] = value
+	// Animation shorthand
+	case "animation":
+		parseAnimationShorthand(props, value)
+	// Individual animation properties
+	case "animation-name":
+		props["animation-name"] = value
+	case "animation-duration":
+		props["animation-duration"] = value
+	case "animation-timing-function":
+		props["animation-timing-function"] = value
+	case "animation-delay":
+		props["animation-delay"] = value
+	case "animation-iteration-count":
+		props["animation-iteration-count"] = value
+	case "animation-direction":
+		props["animation-direction"] = value
+	case "animation-fill-mode":
+		props["animation-fill-mode"] = value
+	case "aspect-ratio":
+		props["aspect-ratio"] = value
+	case "object-fit":
+		// Valid values: fill, contain, cover, none, scale-down
+		props["object-fit"] = value
+	case "object-position":
+		props["object-position"] = value
+	case "filter":
+		props["filter"] = value
+	case "backdrop-filter":
+		props["backdrop-filter"] = value
+	case "clip-path":
+		props["clip-path"] = value
+	case "clip":
+		props["clip"] = value
+	case "column-width":
+		props["column-width"] = value
+	case "column-count":
+		props["column-count"] = value
+	case "column-gap":
+		props["column-gap"] = value
+	case "column-rule-width":
+		props["column-rule-width"] = value
+	case "column-rule-style":
+		props["column-rule-style"] = value
+	case "column-rule-color":
+		props["column-rule-color"] = value
+	case "column-rule":
+		// shorthand: width style color
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			lower := strings.ToLower(part)
+			if lower == "thin" || lower == "medium" || lower == "thick" {
+				props["column-rule-width"] = part
+			} else if part == "none" || part == "hidden" || part == "dotted" || part == "dashed" || part == "solid" || part == "double" || part == "groove" || part == "ridge" || part == "inset" || part == "outset" {
+				props["column-rule-style"] = part
+			} else if ParseColor(part).A > 0 || strings.HasPrefix(lower, "#") || strings.HasPrefix(lower, "rgb") {
+				props["column-rule-color"] = part
+			}
+		}
+	case "break-inside":
+		props["break-inside"] = value
+	case "break-before":
+		props["break-before"] = value
+	case "break-after":
+		props["break-after"] = value
+	case "transition":
+		parseTransitionShorthand(props, value)
+	case "transition-property":
+		props["transition-property"] = value
+	case "transition-duration":
+		props["transition-duration"] = value
+	case "transition-timing-function":
+		props["transition-timing-function"] = value
+	case "transition-delay":
+		props["transition-delay"] = value
+	}
+}
+
+// parseAnimationShorthand parses the CSS animation shorthand property.
+// Syntax: name duration timing-function delay iteration-count direction fill-mode
+// All values except name are optional, and order matters.
+func parseAnimationShorthand(props map[string]string, value string) {
+	// Common timing function keywords
+	timingFuncs := map[string]bool{
+		"ease": true, "linear": true, "ease-in": true, "ease-out": true,
+		"ease-in-out": true, "step-start": true, "step-end": true,
+	}
+	// Common direction keywords
+	directions := map[string]bool{
+		"normal": true, "reverse": true, "alternate": true, "alternate-reverse": true,
+	}
+	// Common fill-mode keywords
+	fillModes := map[string]bool{
+		"none": true, "forwards": true, "backwards": true, "both": true,
+	}
+	// Common iteration-count values
+	iterCounts := map[string]bool{
+		"infinite": true,
+	}
+
+	parts := strings.Fields(value)
+	if len(parts) == 0 {
+		return
+	}
+
+	// Track which properties have been set
+	setDuration := false
+	setTimingFunc := false
+	setDelay := false
+	setIterCount := false
+	setDirection := false
+	setFillMode := false
+
+	// Iterate through parts - first is always name if it doesn't look like a keyword
+	// Since order is flexible after name, we try to identify each value by context
+	i := 0
+	// First, try to find the animation name (first unclassified value)
+	if len(parts) > 0 {
+		// Check if first part could be a duration (contains 's' or numeric)
+		first := parts[0]
+		lower := strings.ToLower(first)
+		isDuration := strings.HasSuffix(first, "s") && !strings.HasSuffix(first, "ms")
+		if isDuration || (strings.ContainsAny(first, "0123456789.") && !strings.HasSuffix(first, "%")) {
+			// First part is a duration, not a name — name stays "none"
+		} else if !timingFuncs[lower] && !directions[lower] && !fillModes[lower] && !iterCounts[lower] {
+			// First part is the animation name
+			props["animation-name"] = first
+			i++
+		} else {
+			// First part is not a name, name stays "none"
+		}
+	}
+
+	for ; i < len(parts); i++ {
+		part := parts[i]
+		lower := strings.ToLower(part)
+
+		if !setDuration && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) {
+			props["animation-duration"] = part
+			setDuration = true
+		} else if !setTimingFunc && timingFuncs[lower] {
+			props["animation-timing-function"] = part
+			setTimingFunc = true
+		} else if !setDelay && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) && !setDuration {
+			// This would be a second duration — treat as delay
+			props["animation-delay"] = part
+			setDelay = true
+		} else if !setDelay && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) && setDuration && !setTimingFunc {
+			props["animation-timing-function"] = part
+			setTimingFunc = true
+		} else if !setIterCount && iterCounts[lower] {
+			props["animation-iteration-count"] = part
+			setIterCount = true
+		} else if !setIterCount {
+			// Could be a number (iteration count)
+			if _, err := strconv.ParseFloat(part, 64); err == nil {
+				props["animation-iteration-count"] = part
+				setIterCount = true
+			}
+		} else if !setDirection && directions[lower] {
+			props["animation-direction"] = part
+			setDirection = true
+		} else if !setFillMode && fillModes[lower] {
+			props["animation-fill-mode"] = part
+			setFillMode = true
+		}
+		// If we still haven't set duration and this part looks like it could be timing function
+		if !setTimingFunc && !setDuration && (timingFuncs[lower] || lower == "cubic-bezier" || lower == "steps") {
+			// Could be timing function or name
+			if !strings.ContainsAny(part, "0123456789") {
+				props["animation-timing-function"] = part
+				setTimingFunc = true
+			}
+		}
+	}
+}
+
+// parseTransitionShorthand parses the CSS transition shorthand property.
+// Syntax: property duration timing-function delay
+func parseTransitionShorthand(props map[string]string, value string) {
+	// timing functions
+	timingFuncs := map[string]bool{
+		"ease": true, "linear": true, "ease-in": true, "ease-out": true,
+		"ease-in-out": true, "step-start": true, "step-end": true,
+	}
+
+	parts := strings.Fields(value)
+	if len(parts) == 0 {
+		return
+	}
+
+	setDuration := false
+	setDelay := false
+	setTimingFunc := false
+
+	// Iterate through parts
+	for i, part := range parts {
+		lower := strings.ToLower(part)
+
+		if !setDuration && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) {
+			if !setDelay {
+				props["transition-duration"] = part
+				setDuration = true
+			} else {
+				props["transition-delay"] = part
+			}
+		} else if !setTimingFunc && (timingFuncs[lower] || strings.HasPrefix(lower, "cubic-bezier") || strings.HasPrefix(lower, "steps")) {
+			props["transition-timing-function"] = part
+			setTimingFunc = true
+		} else if !strings.ContainsAny(part, "0123456789") && part != "none" && part != "all" {
+			// This is the property name
+			props["transition-property"] = part
+		}
+
+		// Check if this could be delay (comes after duration in the shorthand)
+		if setDuration && !setDelay && i > 0 {
+			// Look ahead for delay
+		}
+	}
+
+	// If only one time value and no timing function, it could be duration or delay
+	// Default timing function is ease
+	if !setTimingFunc {
+		props["transition-timing-function"] = "ease"
 	}
 }

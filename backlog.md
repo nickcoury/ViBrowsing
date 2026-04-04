@@ -445,46 +445,115 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🆕 New Items (2026-04-04 Sprint)
 
+### ✅ Completed (2026-04-04)
+
+**CSS Functions & Values:**
+- [x] ~~Implement CSS `calc()` function~~ — Parse `calc(100% - 20px)` with +, -, *, / operators
+- [x] ~~Implement CSS `clamp()` function~~ — Parse `clamp(min, preferred, max)`
+- [x] ~~Implement CSS `min()` and `max()` functions~~ — Parse `min(val1, val2)` and `max(val1, val2)`
+- [x] ~~Implement CSS `counter()` and `counters()`~~ — Automatic numbering for lists
+- [x] ~~Implement CSS `attr()` function~~ — `attr(data-xxx)` for reading attribute values
+- [x] ~~Implement CSS `aspect-ratio`~~ — Forced aspect ratio on boxes
+- [x] ~~Implement CSS `object-fit` and `object-position`~~ — Image sizing within containers
+- [x] ~~Implement CSS `filter` parsing~~ — blur, brightness, contrast, grayscale, sepia, hue-rotate, drop-shadow
+- [x] ~~Implement CSS `backdrop-filter`~~ — Same syntax as filter
+- [x] ~~Implement CSS `clip-path` parsing~~ — inset, circle, ellipse, polygon shapes
+- [x] ~~Implement CSS `column-*` properties~~ — column-width, column-count, column-gap, column-rule, break-*
+- [x] ~~Implement CSS `@keyframes` and `animation`~~ — Keyframe rule parsing and animation shorthand
+- [x] ~~Implement CSS `transition`~~ — transition-property, duration, timing-function, delay
+
+**DOM APIs:**
+- [x] ~~Implement `GetElementById()`~~ — Fast ID-based element lookup
+- [x] ~~Implement `GetElementsByClassName()`~~ — Class-based element collection
+- [x] ~~Implement `GetElementsByTagName()`~~ — Tag-based element collection
+- [x] ~~Implement `QuerySelector()` and `QuerySelectorAll()`~~ — CSS selector-based element lookup
+- [x] ~~Implement `classList` API~~ — add(), remove(), toggle(), contains(), replace(), item(), length
+- [x] ~~Implement `textContent` and `innerHTML`/`outerHTML`~~ — Content getter/setter APIs
+- [x] ~~Implement `createElement()` and `createTextNode()`~~ — DOM node creation
+- [x] ~~Implement `appendChild()`, `removeChild()`, `insertBefore()`, `replaceChild()`~~ — DOM manipulation
+- [x] ~~Implement `cloneNode()` (shallow and deep)~~ — Node cloning
+- [x] ~~Implement `getAttribute()`, `setAttribute()`, `removeAttribute()`, `hasAttribute()`~~ — Attribute API
+- [x] ~~Implement `dataset` property~~ — data-* attribute access
+- [x] ~~Implement `style` property (get/set inline styles)~~ — Via SetAttribute("style", ...)
+
+**HTML Elements:**
+- [x] ~~Implement `<slot>` element~~ — Web component slot (display: contents)
+- [x] ~~Implement `<dialog>` element~~ — Modal dialog with backdrop
+- [x] ~~Implement `<meter>` element~~ — Gauge with value coloring
+- [x] ~~Implement `<progress>` element~~ — Progress bar
+- [x] ~~Implement `<mark>` element~~ — Highlighted text (yellow background)
+- [x] ~~Implement `<ruby>`, `<rt>`, `<rp>` elements~~ — Ruby annotation
+- [x] ~~Implement `<bdi>` and `<bdo>` elements~~ — Bidirectional text
+
+**CSS Properties:**
+- [x] ~~Implement `clip` (legacy)~~ — rect() clipping
+- [x] ~~Implement `flex-flow`, `order`, `align-content`~~ — Additional flexbox properties
+- [x] ~~Implement `font-variant`, `unicode-bidi`, `direction`, `writing-mode`~~ — Typography & i18n
+- [x] ~~Implement `tab-size`, `quotes`~~ — Text formatting properties
+
+---
+
 ### 🔴 Critical (Parser/Rendering)
 - [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
 - [ ] **Fix table cell collapsing borders** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
 - [ ] **Fix float clearing** — blocks that clear:left/right/both should properly position below the float, not overlap it
 - [ ] **Implement CSS transform on inline boxes** — transforms on inline elements should create a transform box and not affect line layout
+- [ ] **Fix `:nth-child()` selector** — Complex `an+b` formulas (even, odd, 2n+1, 3n-1) don't work
 
 ### 🟡 High (Layout/Rendering)
-- [ ] **Implement CSS `column-width` and `column-count`** — multi-column layout with column-gap and column-rule
-- [ ] **Implement CSS `aspect-ratio`** — forced aspect ratio on boxes (width/height from ratio)
-- [ ] **Implement CSS `filter`** — blur, brightness, contrast, grayscale, sepia effects on elements
-- [ ] **Implement CSS `backdrop-filter`** — blur behind fixed/absolute positioned elements
-- [ ] **Implement CSS `clip-path`** — polygon and basic shape clipping on elements
-- [ ] **Implement `<iframe>` rendering** — show placeholder for iframes (recursive rendering is complex)
-- [ ] **Implement `<canvas>` 2D context** — render canvas drawing commands to output
+- [ ] **Implement CSS `filter` drawing** — Actually apply blur, brightness, contrast, grayscale, sepia effects to rendered pixels
+- [ ] **Implement CSS `backdrop-filter` drawing** — Apply blur to elements behind fixed/absolute positioned elements
+- [ ] **Implement CSS `clip-path` drawing** — Clip element rendering to inset/circle/polygon shapes
+- [ ] **Implement `<iframe>` rendering** — Show placeholder for iframes (recursive rendering is complex)
+- [ ] **Implement `<canvas>` 2D context** — Render canvas drawing commands to output
+- [ ] **Implement emoji rendering** — Proper color emoji display (may need fontconfig)
+- [ ] **Implement CSS `clip-path: polygon()` drawing** — Fill polygons for clip-path
 
 ### 🟡 High (CSS Selectors & Cascade)
-- [ ] **Implement `:nth-child(an+b)` selector** — complex nth-child formulas (even, odd, 2n+1, etc.)
-- [ ] **Implement `:not()` pseudo-class** — negation selector with complex selectors inside
-- [ ] **Implement `:checked`, `:disabled`, `:enabled` pseudo-classes** — for form state matching
-- [ ] **Implement CSS `@keyframes` parsing** — store keyframe rules for later animation use
-- [ ] **Implement CSS `animation` property** — apply keyframe animations to elements
-- [ ] **Implement CSS `transition` property** — smooth property transitions (requires state tracking)
+- [ ] **Implement `:not()` pseudo-class** — Negation selector with complex selectors inside
+- [ ] **Implement `:checked`, `:disabled`, `:enabled` pseudo-classes** — For form state matching
+- [ ] **Implement `::before` and `::after` pseudo-elements** — With `content` property
+- [ ] **Implement `:first-line` and `::first-letter`** — Text segment pseudo-elements
+- [ ] **Implement CSS combinators fully** — Descendant (space), child (>), adjacent sibling (+), general sibling (~)
+- [ ] **Implement `:lang()` pseudo-class** — Language-based selector
 
-### 🟡 High (HTML/CSS Coverage)
-- [ ] **Implement `<slot>` and shadow DOM basics** — web component slot projection (parse but don't render)
-- [ ] **Implement `<dialog>` element** — modal dialog with backdrop
-- [ ] **Implement `<meter>` and `<progress>`** — gauge and progress bar elements
-- [ ] **Implement CSS `counter()` and `counters()`** — automatic numbering for lists/headings
-- [ ] **Implement CSS `calc()` in values** — `width: calc(100% - 20px)` in CSS value parsing
-- [ ] **Implement CSS `clamp()` and `min()`/`max()`** — modern CSS comparison functions
+### 🟡 High (URL & Navigation)
+- [ ] **Implement `<base>` href support** — Resolve relative URLs against base tag
+- [ ] **Implement HTTP cookies** — Send cookies on subsequent requests to same origin
+- [ ] **Implement browser history** — Back/forward navigation between visited URLs
+- [ ] **Implement link target resolution** — `<a target="_blank">` opens in new tab
 
-### 🟢 Medium (Content & Rendering)
-- [ ] **Implement `<abbr>` with title tooltip** — abbreviation with full text on hover (tooltip)
-- [ ] **Implement `<mark>` highlighting** — marked/highlighted text with yellow background
-- [ ] **Implement `<ruby>` annotation** — ruby text above/below base text for East Asian typography
-- [ ] **Implement `<bdi>` and `<bdo>`** — bidirectional text isolation and override
-- [ ] **Implement emoji rendering** — proper color emoji character display (may need font configuration)
+### 🟡 High (Platform)
+- [ ] **Implement scroll support** — Mouse wheel / scrollbar navigation through page content
+- [ ] **Implement click interaction** — Clicking links should navigate to those URLs
+- [ ] **Implement text selection** — Highlight text with mouse
+- [ ] **Implement window title** — Render document `<title>` in window title bar
+- [ ] **Implement favicon** — Fetch and display favicon.ico in window
 
 ### 🟢 Medium (Performance)
-- [ ] **Lazy image decoding** — don't decode images until visible in viewport
-- [ ] **CSS selector indexing** — build index of elements by class/id/tag for fast selector matching
-- [ ] **Text measurement caching** — cache Ebitengine text measurement results per font/size/text combo
-- [ ] **Streaming HTML parse** — for large pages, parse HTML incrementally without buffering all
+- [ ] **Lazy image decoding** — Don't decode images until visible in viewport
+- [ ] **CSS selector indexing** — Build index of elements by class/id/tag for fast selector matching
+- [ ] **Text measurement caching** — Cache Ebitengine text measurement results per font/size/text combo
+- [ ] **Streaming HTML parse** — For large pages, parse HTML incrementally without buffering all
+- [ ] **Memory pool for nodes** — Reuse allocated Node/Token objects instead of GC-heavy allocation per parse
+
+### 🟢 Medium (Content & Rendering)
+- [ ] **Implement `<abbr>` with title tooltip** — Abbreviation with full text on hover
+- [ ] **Implement `<ruby>` layout** — Ruby text above/below base text for East Asian typography
+- [ ] **Implement `calc()` evaluation in layout** — Actually compute `width: calc(100% - 20px)` during layout
+- [ ] **Implement CSS `@media` query matching** — Apply rules only when viewport matches
+- [ ] **Implement CSS `cursor`** — Show appropriate cursor on interactive elements
+
+### 🟠 Low (Testing & QA)
+- [ ] **html5lib test corpus** — Download and run 500+ HTML parsing edge case tests
+- [ ] **Visual screenshot tests** — Collect baseline screenshots, diff on changes
+- [ ] **Fuzz testing** — Use go-fuzz to generate random HTML/CSS and verify no panics
+- [ ] **Performance benchmarks** — Measure parse time, layout time, paint time for pages of varying size
+
+### 🟠 Low (Canvas/Drawing)
+- [ ] **Implement `background-repeat: space/round`** — Tile backgrounds with spacing or scaling
+- [ ] **Implement `background-position` (percentages)** — Offset background image by percentage
+- [ ] **Implement `background-size: cover/contain`** — Scale background to fill or fit
+- [ ] **Implement `text-shadow` multiple shadows** — Multiple comma-separated shadows on text
+- [ ] **Implement `box-shadow` multiple shadows** — Multiple comma-separated drop shadows
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box
