@@ -114,7 +114,7 @@ func BuildLayoutTree(doc *html.Node, rules []css.Rule) *Box {
 	}
 
 	// Build layout tree recursively
-	box := buildBox(body, rules, 0)
+	box := buildBox(body, rules, 0, nil)
 	return box
 }
 
@@ -130,17 +130,23 @@ func findBody(n *html.Node) *html.Node {
 	return nil
 }
 
-func buildBox(node *html.Node, rules []css.Rule, depth int) *Box {
+func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[string]string) *Box {
 	if node == nil {
 		return nil
 	}
 
-	// Text nodes
+	// Text nodes inherit parent style
 	if node.Type == html.NodeText {
+		style := map[string]string{}
+		if parentStyle != nil {
+			for k, v := range parentStyle {
+				style[k] = v
+			}
+		}
 		return &Box{
 			Type:  TextBox,
 			Node:  node,
-			Style: map[string]string{},
+			Style: style,
 			Children: []*Box{},
 		}
 	}
@@ -205,9 +211,9 @@ func buildBox(node *html.Node, rules []css.Rule, depth int) *Box {
 	box.BorderBottom = borderWidth
 	box.BorderLeft = borderWidth
 
-	// Recurse for children
+	// Recurse for children (pass our computed style as parent style)
 	for _, child := range node.Children {
-		childBox := buildBox(child, rules, depth+1)
+		childBox := buildBox(child, rules, depth+1, style)
 		if childBox != nil {
 			box.Children = append(box.Children, childBox)
 		}

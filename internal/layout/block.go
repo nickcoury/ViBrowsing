@@ -65,35 +65,92 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 	// Inline layout: wrap at container width
 	contentWidth := parent.ContentW
+	if contentWidth <= 0 {
+		contentWidth = 800
+	}
 
 	if box.Type == TextBox {
 		text := box.Node.Data
+		whiteSpace := box.Style["white-space"]
 		fontSize := css.ParseLength(box.Style["font-size"]).Value
 		if fontSize == 0 {
 			fontSize = 16
 		}
-
-		// Approximate: 0.6 * font-size per character
+		lineHeight := css.ParseLength(box.Style["line-height"]).Value
+		if lineHeight == 0 {
+			lineHeight = 1.2
+		}
+		lineHeightPx := lineHeight * fontSize
 		charWidth := fontSize * 0.6
-		lineHeight := css.ParseLength(box.Style["line-height"]).Value * fontSize
 
-		// Wrap text
 		x := ctx.X
+		startX := x
+		startY := ctx.Y
+		isPre := whiteSpace == "pre" || whiteSpace == "pre-wrap"
+		wrapPrevWord := false
 
-		for range text {
-			if x+charWidth > contentWidth && x > ctx.X {
-				// Wrap to next line
-				x = ctx.X
-				ctx.Y += lineHeight
+		for i := 0; i < len(text); i++ {
+			c := text[i]
+
+			// Handle explicit newlines in pre mode
+			if c == '\n' {
+				if isPre {
+					x = ctx.X
+					ctx.Y += lineHeightPx
+					x = ctx.X
+					wrapPrevWord = false
+					continue
+				}
+				// In normal mode, newline collapses to a space
+				c = ' '
 			}
-			box.ContentX = x
-			box.ContentY = ctx.Y
-			box.ContentW = charWidth
-			box.ContentH = lineHeight
-			x += charWidth
+			if c == '\r' {
+				continue
+			}
+			if c == '\t' {
+				c = ' '
+			}
+
+			cw := charWidth
+			if c == ' ' {
+				if !isPre && wrapPrevWord {
+					// Skip leading whitespace after a wrap
+					continue
+				}
+				wrapPrevWord = false
+			}
+
+			// Wrap line if needed (not in pre mode)
+			canWrap := !isPre
+			if canWrap && x+cw > contentWidth && x > ctx.X {
+				x = ctx.X
+				ctx.Y += lineHeightPx
+				wrapPrevWord = false
+				// Skip space at start of new line (normal mode)
+				if c == ' ' {
+					continue
+				}
+			}
+
+			x += cw
+			if c != ' ' {
+				wrapPrevWord = true
+			}
 		}
 
-		// Update cursor
+		// Set box to cover the entire text range
+		box.ContentX = startX
+		box.ContentY = startY
+		box.ContentW = x - startX
+		if box.ContentW < charWidth {
+			box.ContentW = charWidth
+		}
+		box.ContentH = ctx.Y + lineHeightPx - startY
+		if box.ContentH < lineHeightPx {
+			box.ContentH = lineHeightPx
+		}
+
+		// Advance cursor past the text
 		if x > ctx.X {
 			ctx.X = x
 		}

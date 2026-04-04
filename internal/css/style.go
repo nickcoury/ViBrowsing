@@ -34,6 +34,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"height":         "auto",
 		"text-align":     "left",
 		"line-height":    "1.2",
+		"white-space":    "normal",
 		"overflow":       "visible",
 		"overflow-x":     "visible",
 		"overflow-y":     "visible",
@@ -251,6 +252,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["font-style"] = value
 	case "visibility":
 		props["visibility"] = value
+	case "white-space":
+		props["white-space"] = value
 	case "overflow":
 		props["overflow"] = value
 	case "overflow-x":

@@ -12,7 +12,7 @@
 
 - [x] ~~Implement CSS box model properly~~ (2026-04-03 sprint) — TotalWidth/TotalHeight now use Box fields; canvas draws margin/background/padding/border in correct order with proper geometry
 - [ ] **Implement flexbox layout** — HN stories and most modern UIs use flexbox. Need to support `display: flex`, `flex-direction`, `justify-content`, `align-items`, `gap`
-- [ ] **Implement inline layout** — text wraps within block containers, `<span>` flows with text, `white-space: pre` preserves whitespace
+- [x] ~~Implement inline layout~~ (2026-04-03 sprint) — text wraps at container width; white-space:normal collapses whitespace, pre/pre-wrap preserves it; text boxes inherit parent style including white-space; explicit newline handling in pre mode
 - [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed` with `top/left/right/bottom` offsets
 - [ ] **Implement z-index stacking** — elements stack in layers, `z-index` controls stacking order
@@ -49,7 +49,7 @@
 - [ ] **Implement CSS `cursor`** — show appropriate cursor on interactive elements (pointer, text, wait, etc)
 - [ ] **Implement CSS `outline`** — focus ring around elements (like border but doesn't affect layout)
 - [ ] **Implement CSS `overflow`** — `overflow: hidden/scroll/auto/visible`, `overflow-x`, `overflow-y`
-- [ ] **Implement CSS `white-space`** — `normal`, `pre`, `nowrap`, `pre-wrap`, `pre-line`
+- [x] ~~Implement CSS `white-space`~~ (2026-04-03 sprint) — normal/pre/pre-wrap values; collapses spaces in normal mode; preserves newlines and spaces in pre mode
 - [ ] **Implement CSS `word-wrap` / `overflow-wrap`** — long word breaking
 - [ ] **Implement CSS `text-overflow`** — `text-overflow: ellipsis` for clipped text
 - [ ] **Implement CSS `content`** — for ::before and ::after pseudo-elements
