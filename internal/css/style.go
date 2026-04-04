@@ -73,6 +73,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"outline-color":   "black",
 		"box-shadow":      "none",
 		"cursor":          "auto",
+		"transform":       "none",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -353,6 +354,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["overflow-wrap"] = value
 	case "cursor":
 		props["cursor"] = value
+	case "transform":
+		props["transform"] = value
 	case "position":
 		props["position"] = value
 	case "top":
