@@ -62,6 +62,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"outline-width":   "0",
 		"outline-style":   "none",
 		"outline-color":   "black",
+		"box-shadow":      "none",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -336,5 +337,7 @@ func applyDecl(props map[string]string, decl Declaration) {
 		if len(parts) >= 3 {
 			props["outline-color"] = parts[2]
 		}
+	case "box-shadow":
+		props["box-shadow"] = value
 	}
 }

@@ -220,6 +220,31 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
 	}
 
+	// Box shadow (drawn after background, before border)
+	boxShadow := box.Style["box-shadow"]
+	if boxShadow != "" && boxShadow != "none" {
+		// Parse box-shadow: offsetX offsetY blurRadius color
+		// Format: <offset-x> <offset-y> <blur-radius> <color>
+		parts := strings.Fields(boxShadow)
+		if len(parts) >= 2 {
+			shadowX := int(css.ParseLength(parts[0]).Value)
+			shadowY := int(css.ParseLength(parts[1]).Value)
+			shadowColor := css.Color{R: 0, G: 0, B: 0, A: 128}
+			if len(parts) >= 4 {
+				shadowColor = css.ParseColor(parts[3])
+			} else if len(parts) >= 3 {
+				shadowColor = css.ParseColor(parts[2])
+			}
+			if opacity < 1 {
+				shadowColor = applyOpacity(shadowColor, opacity)
+			}
+			// Draw shadow rectangle offset from content area
+			shadowDrawX := contentX + shadowX
+			shadowDrawY := contentY + shadowY
+			c.FillRect(shadowDrawX, shadowDrawY, contentW, contentH, shadowColor)
+		}
+	}
+
 	// Outline (drawn outside border box, like border but doesn't affect layout)
 	outlineWidth := int(css.ParseLength(box.Style["outline-width"]).Value)
 	outlineColor := css.ParseColor(box.Style["outline-color"])

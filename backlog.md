@@ -47,7 +47,7 @@
 - [ ] **Implement CSS `transform`** — rotate, scale, translate (2D transforms)
 - [ ] **Implement CSS `@media` queries** — responsive design breakpoints
 - [ ] **Implement CSS `cursor`** — show appropriate cursor on interactive elements (pointer, text, wait, etc)
-- [ ] **Implement CSS `outline`** — focus ring around elements (like border but doesn't affect layout)
+- [x] ~~Implement CSS `outline`~~ (2026-04-04 sprint) — parse outline-width/style/color and outline shorthand; draw outside border box
 - [ ] **Implement CSS `overflow`** — `overflow: hidden/scroll/auto/visible`, `overflow-x`, `overflow-y`
 - [x] ~~Implement CSS `white-space`~~ (2026-04-03 sprint) — normal/pre/pre-wrap values; collapses spaces in normal mode; preserves newlines and spaces in pre mode
 - [ ] **Implement CSS `word-wrap` / `overflow-wrap`** — long word breaking
