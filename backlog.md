@@ -98,7 +98,7 @@
 - [ ] **Implement `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
 - [ ] **Implement `outline`** — focus ring around elements (like border but doesn't affect layout)
 - [ ] **Implement `transform`** — rotate, scale, translate (2D transforms)
-- [ ] **Implement `letter-spacing`, `word-spacing`, `text-indent`, `text-transform`** — stored but not rendered (char width adjustments, text case conversion)
+- [x] ~~Implement `letter-spacing`, `word-spacing`, `text-indent`, `text-transform`~~ (2026-04-04 sprint) — DrawText: text-transform applies uppercase/lowercase/capitalize; letter-spacing adds per-char extra; word-spacing adds after spaces; text-indent offsets first line; font-weight affects char width (bold=0.65em, light=0.55em); font-style italic makes chars 10% wider
 
 ### Missing CSS Selectors
 - [ ] **Implement attribute selectors** — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`

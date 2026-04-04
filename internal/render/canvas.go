@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/layout"
@@ -320,23 +321,117 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		fontSize = 16
 	}
 
+	// Apply text-transform
+	textTransform := box.Style["text-transform"]
+	switch textTransform {
+	case "uppercase":
+		text = strings.ToUpper(text)
+	case "lowercase":
+		text = strings.ToLower(text)
+	case "capitalize":
+		text = strings.Title(strings.ToLower(text))
+	}
+
 	textColor := css.ParseColor(box.Style["color"])
 	x := int(box.ContentX)
 	y := int(box.ContentY)
+	containerWidth := int(box.ContentW)
+	if containerWidth <= 0 {
+		containerWidth = 800
+	}
 
-	charWidth := int(fontSize * 0.6)
-	lineHeight := int(fontSize * 1.2)
+	// Font style (italic)
+	fontStyle := box.Style["font-style"]
 
-	currentX := x
-	currentY := y
+	// Font weight (bold chars are wider, light chars are narrower)
+	fontWeight := box.Style["font-weight"]
 
-	for range text {
-		if currentX+charWidth > x+int(box.ContentW) && currentX > x {
-			currentX = x
-			currentY += lineHeight
+	// Letter spacing
+	letterSpacing := css.ParseLength(box.Style["letter-spacing"]).Value
+
+	// Word spacing
+	wordSpacing := css.ParseLength(box.Style["word-spacing"]).Value
+
+	// Text indent (applied on first line only)
+	textIndent := css.ParseLength(box.Style["text-indent"]).Value
+
+	charWidth := fontSize * 0.6
+	if fontWeight == "bold" || fontWeight == "700" || fontWeight == "800" || fontWeight == "900" {
+		charWidth = fontSize * 0.65
+	} else if fontWeight == "light" || fontWeight == "100" || fontWeight == "200" || fontWeight == "300" {
+		charWidth = fontSize * 0.55
+	}
+
+	// Italic slant: make chars slightly wider
+	italicSlant := 1.0
+	if fontStyle == "italic" || fontStyle == "oblique" {
+		italicSlant = 1.1
+	}
+
+	lineHeight := fontSize * 1.2
+
+	currentX := float64(x) + textIndent
+	firstLineStartX := x
+	isFirstLine := true
+	currentY := float64(y)
+	isPre := box.Style["white-space"] == "pre" || box.Style["white-space"] == "pre-wrap"
+
+	for i := 0; i < len(text); i++ {
+		ch := rune(text[i])
+
+		// Handle explicit newlines in pre mode
+		if ch == '\n' {
+			if isPre {
+				currentX = float64(x)
+				currentY += lineHeight
+				isFirstLine = false
+				currentX = float64(x)
+				continue
+			}
+			// In normal mode, newline collapses
 		}
-		c.FillRect(currentX, currentY, charWidth, int(fontSize), textColor)
-		currentX += charWidth
+		if ch == '\r' {
+			continue
+		}
+		if ch == '\t' {
+			ch = ' '
+		}
+
+		// Extra spacing for letter-spacing
+		extraLetter := letterSpacing
+
+		// Word spacing: add after space (but not for first space on line)
+		extraWord := 0.0
+		if ch == ' ' && !isPre {
+			extraWord = wordSpacing
+			if int(currentX) == x || int(currentX) == firstLineStartX {
+				extraWord = 0
+			}
+		}
+
+		cw := charWidth*italicSlant + extraLetter
+
+		// Wrap line if needed (not in pre mode)
+		canWrap := !isPre
+		wrapX := float64(x)
+		if isFirstLine && textIndent > 0 {
+			wrapX = float64(x) + textIndent
+		}
+		if canWrap && currentX+cw > float64(x)+float64(containerWidth) && currentX > wrapX {
+			currentX = float64(x)
+			currentY += lineHeight
+			isFirstLine = false
+			if ch == ' ' {
+				continue
+			}
+		}
+
+		charH := fontSize
+		if italicSlant > 1 {
+			charH = fontSize * italicSlant
+		}
+		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
+		currentX += cw + extraWord
 	}
 }
 
