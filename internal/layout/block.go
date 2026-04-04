@@ -2,6 +2,7 @@ package layout
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 )
@@ -900,6 +901,16 @@ func computeWidth(box *Box, containingWidth float64) float64 {
 		return containingWidth - marginLeft - marginRight - paddingLeft - paddingRight - borderLeft - borderRight
 	}
 
+	// Handle calc()
+	if strings.HasPrefix(widthStr, "calc(") {
+		val, err := css.ParseCalc(widthStr, func(unit string) float64 {
+			return containingWidth
+		})
+		if err == nil {
+			return val
+		}
+	}
+
 	l := css.ParseLength(widthStr)
 	switch l.Unit {
 	case css.UnitPercent:
@@ -912,9 +923,24 @@ func computeWidth(box *Box, containingWidth float64) float64 {
 func computeHeight(box *Box, childCtx *LayoutContext) float64 {
 	hStr := box.Style["height"]
 	if hStr != "auto" && hStr != "" {
+		// Handle calc()
+		if strings.HasPrefix(hStr, "calc(") {
+			val, err := css.ParseCalc(hStr, func(unit string) float64 {
+				if childCtx != nil {
+					return childCtx.Height
+				}
+				return 0
+			})
+			if err == nil {
+				return val
+			}
+		}
 		l := css.ParseLength(hStr)
 		if l.Unit == css.UnitPercent {
-			return l.Value // Use as-is for now
+			if childCtx != nil {
+				return childCtx.Height * l.Value / 100
+			}
+			return l.Value
 		}
 		return l.Value
 	}

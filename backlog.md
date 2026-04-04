@@ -443,6 +443,46 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ---
 
+## 🆕 New Items (2026-04-05 Sprint)
+
+### 🟡 High Priority
+
+- **Implement CSS `resize` property** — `resize: both/horizontal/vertical` on elements like textarea, allow user to resize
+- **Implement `<details>` and `<summary>` toggle** — disclosure widget, click summary to toggle content visibility
+- **Implement CSS `pointer-events`** — `pointer-events: none` makes element unclickable; `auto`, `visiblePainted`, etc.
+- **Implement `<picture>` element** — responsive images with `<source srcset="...">` fallback chain
+- **Implement CSS `will-change` hint** — `will-change: transform` performance hint; mark elements for GPU compositing
+- **Implement CSS `image-rendering`** — `image-rendering: crisp-edges` / `pixelated` for pixel art scaling
+- **Implement `window.scrollTo()` and `window.scrollBy()`** — programmatic scroll APIs
+- **Implement `element.scrollIntoView()`** — scroll element into viewport (start/center/end/nearest)
+- **Implement CSS `scroll-behavior`** — `scroll-behavior: smooth` for smooth scroll transitions
+
+### 🟢 Medium Priority
+
+- **Implement `window.innerWidth`, `window.innerHeight`** — viewport dimensions accessible via JavaScript
+- **Implement `navigator.userAgent`** — expose user agent string via navigator object
+- **Implement CSS `overscroll-behavior`** — `overscroll-behavior: contain` / `none` for pull-to-refresh control
+- **Implement `<del>` and `<ins>` elements** — strikethrough for deleted, underline for inserted text
+- **Implement CSS `text-decoration-line/color/style`** — individual text-decoration properties (underline color/style)
+- **Implement `<output>` element** — form output display with for="" attribute linking inputs
+- **Implement CSS `font-stretch`** — narrow/wider font variants (ultra-condensed to ultra-expanded)
+- **Implement CSS `place-items` and `place-self`** — alignment shorthands for grid/flex
+- **Implement CSS `mix-blend-mode`** — blend modes (multiply, screen, overlay, etc.) for element compositing
+- **Implement CSS `hanging-punctuation`** — `hanging-punctuation: first/last/both` for punctuation outside text box
+- **Implement CSS `contain` property** — `contain: layout/style/paint/none` for performance isolation
+- **Implement `CSS.supports()` API** — programmatic @supports check: `CSS.supports('display', 'grid')`
+- **Implement `window.matchMedia()`** — MediaQueryList interface for JavaScript media query checks
+- **Implement CSS `transform-box`** — `transform-box: view-box/content-box/fill-box` for transform reference box
+
+### 🟠 Low Priority
+
+- **Implement `<map>` and `<area>`** — client-side image maps with clickable regions (legacy but still used)
+- **Implement `IntersectionObserver`** — viewport visibility detection for lazy loading and scroll tracking
+- **Implement `ResizeObserver`** — element resize detection for responsive components
+- **Implement `ime-mode` CSS property** — input method editor hints for East Asian input
+- **Implement `<data>` element** — machine-readable data wrapper with `value=""` attribute
+
+
 ## 🆕 New Items (2026-04-04 Sprint)
 
 ### ✅ Completed (2026-04-04)

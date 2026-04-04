@@ -84,6 +84,111 @@ func ParseLength(s string) Length {
 	}
 }
 
+// ParseCalc parses a CSS calc() expression like "100% - 20px" or "50% + 10px".
+// Returns the computed pixel value, using resolvePercent to resolve percentage values.
+func ParseCalc(s string, resolvePercent func(unit string) float64) (float64, error) {
+	// Strip "calc(" wrapper if present
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "calc(") {
+		s = s[4:]
+		if strings.HasSuffix(s, ")") {
+			s = s[:len(s)-1]
+		}
+	}
+	s = strings.TrimSpace(s)
+	return evaluateCalc(s, resolvePercent)
+}
+
+func evaluateCalc(s string, resolvePercent func(unit string) float64) (float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+
+	// Find the lowest-precedence operator at the top level
+	// + and - have lower precedence than * and /
+	// We scan from left to right, tracking parentheses depth
+	parenDepth := 0
+	var ops []int
+	var opChars []byte
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '(' {
+			parenDepth++
+		} else if c == ')' {
+			parenDepth--
+		} else if parenDepth == 0 && (c == '+' || c == '-' || c == '*' || c == '/') {
+			// Skip +/- that's actually a sign, not an operator (must have space before)
+			if (c == '+' || c == '-') && (i == 0 || (s[i-1] != ' ' && s[i-1] != '\t')) {
+				continue
+			}
+			ops = append(ops, i)
+			opChars = append(opChars, c)
+		}
+	}
+
+	if len(ops) == 0 {
+		// No top-level operators — parse as a single value
+		s = strings.TrimSpace(s)
+		// Check for parentheses grouping
+		if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
+			return evaluateCalc(s[1:len(s)-1], resolvePercent)
+		}
+		// Parse as a length
+		l := ParseLength(s)
+		if l.Unit == UnitPercent {
+			return resolvePercent("%"), nil
+		}
+		return l.Value, nil
+	}
+
+	// Find last lowest-precedence operator (* and / bind tighter)
+	lastOpIdx := ops[0]
+	lastOp := opChars[0]
+	isHighPrec := lastOp == '*' || lastOp == '/'
+
+	for i := 1; i < len(ops); i++ {
+		op := opChars[i]
+		isHighPrecCur := op == '*' || op == '/'
+		if !isHighPrec && isHighPrecCur {
+			continue
+		}
+		if (!isHighPrec && !isHighPrecCur) || (isHighPrec && isHighPrecCur) {
+			lastOpIdx = ops[i]
+			lastOp = op
+			isHighPrec = isHighPrecCur
+		}
+	}
+
+	leftStr := strings.TrimSpace(s[:lastOpIdx])
+	rightStr := strings.TrimSpace(s[lastOpIdx+1:])
+
+	leftVal, err := evaluateCalc(leftStr, resolvePercent)
+	if err != nil {
+		return 0, err
+	}
+	rightVal, err := evaluateCalc(rightStr, resolvePercent)
+	if err != nil {
+		return 0, err
+	}
+
+	switch lastOp {
+	case '+':
+		return leftVal + rightVal, nil
+	case '-':
+		return leftVal - rightVal, nil
+	case '*':
+		return leftVal * rightVal, nil
+	case '/':
+		if rightVal == 0 {
+			return 0, nil
+		}
+		return leftVal / rightVal, nil
+	}
+	return 0, nil
+}
+
 // BorderRadius represents CSS border-radius (1-4 values).
 type BorderRadius struct {
 	TopLeft, TopRight, BottomRight, BottomLeft Length
