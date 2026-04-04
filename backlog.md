@@ -282,9 +282,9 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🟠 Low (Internationalization & i18n)
 
-- [ ] **Implement UTF-8 charset detection** — from HTTP Content-Type and `<meta charset>`
-- [ ] **Implement `<meta http-equiv="Content-Type">` charset** — legacy charset declaration
-- [ ] **Implement `<meta charset="UTF-8">`** — HTML5 charset declaration
+- [x] ~~Implement UTF-8 charset detection~~ (2026-04-03 sprint) — DetectCharset() checks UTF-8 BOM, <meta charset="">, and <meta http-equiv="Content-Type" content="...charset=...">; defaults to utf-8
+- [x] ~~Implement `<meta http-equiv="Content-Type">` charset~~ (2026-04-03 sprint) — covered by DetectCharset()
+- [x] ~~Implement `<meta charset="UTF-8">`~~ (2026-04-03 sprint) — covered by DetectCharset()
 - [ ] **Implement CSS `lang` attribute selector** — `:lang(en)` pseudo-class
 - [ ] **Implement HTML `lang` attribute** — `<html lang="en">` for accessibility
 - [ ] **Implement `<bdo dir="rtl">`** — right-to-left text override
