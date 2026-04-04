@@ -131,7 +131,45 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			ctx.LineBoxStartY = ctx.Y
 			ctx.LineBoxChildren = nil
 			layoutPositionedChild(child, ctx)
+		case TableBox:
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
+			layoutTableContainer(child, ctx)
+		case TableRowBox, TableSectionBox:
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
+			layoutTableRow(child, ctx)
+		case TableCellBox, TableCaptionBox:
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
+			layoutTableCell(child, ctx)
 		case InlineBox, TextBox:
+			prevY := ctx.Y
+			layoutInlineChild(child, box, ctx)
+			// Check if we wrapped to a new line
+			if ctx.Y > prevY {
+				// New line started — flush previous line box
+				applyVerticalAlignments(ctx)
+				ctx.LineBoxBaseline = 0
+				ctx.LineBoxMaxAscent = 0
+				ctx.LineBoxMaxDescent = 0
+				ctx.LineBoxStartY = ctx.Y
+				ctx.LineBoxChildren = nil
+			}
+		case ButtonBox, SelectBox, TextAreaBox, LabelBox, MediaBox:
+			// These are inline-level elements treated like inline boxes
 			prevY := ctx.Y
 			layoutInlineChild(child, box, ctx)
 			// Check if we wrapped to a new line
@@ -886,4 +924,135 @@ func computeHeight(box *Box, childCtx *LayoutContext) float64 {
 		return childCtx.Y
 	}
 	return 0
+}
+
+// layoutTableContainer handles layout for a table box.
+// It manages the overall table dimensions and hosts table sections/rows.
+func layoutTableContainer(box *Box, ctx *LayoutContext) {
+	width := computeWidth(box, ctx.Width)
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+
+	box.ContentX = ctx.X + marginLeft
+	box.ContentY = ctx.Y + marginTop
+	box.ContentW = width
+
+	// Gather all table rows (direct children that are table-row boxes or from sections)
+	var tableRows []*Box
+	for _, child := range box.Children {
+		if child.Type == TableRowBox {
+			tableRows = append(tableRows, child)
+		} else if child.Type == TableSectionBox {
+			// For section boxes, collect their row children
+			for _, secChild := range child.Children {
+				if secChild.Type == TableRowBox {
+					tableRows = append(tableRows, secChild)
+				}
+			}
+		}
+	}
+
+	// Layout each row and compute total table height
+	totalHeight := 0.0
+	for _, row := range tableRows {
+		layoutTableRow(row, &LayoutContext{
+			Width: width,
+			X:     box.ContentX,
+			Y:     box.ContentY + totalHeight,
+		})
+		totalHeight += row.ContentH
+	}
+
+	box.ContentH = totalHeight
+
+	// Update cursor
+	nextY := box.ContentY + box.ContentH + css.ParseLength(box.Style["margin-bottom"]).Value
+	ctx.Y = nextY
+}
+
+// layoutTableRow handles layout for a table-row box.
+// It positions its cells horizontally.
+func layoutTableRow(box *Box, ctx *LayoutContext) {
+	width := ctx.Width
+
+	// Collect cells from this row's children
+	var cells []*Box
+	for _, child := range box.Children {
+		if child.Type == TableCellBox {
+			cells = append(cells, child)
+		}
+	}
+
+	// Calculate column widths based on cells
+	// Simple approach: divide available width among columns
+	numCols := 0
+	for _, cell := range cells {
+		numCols += cell.ColSpan
+	}
+	if numCols == 0 {
+		numCols = 1
+	}
+	colWidth := width / float64(numCols)
+
+	// Position cells horizontally
+	x := ctx.X
+	maxHeight := 0.0
+	colIndex := 0
+
+	for _, cell := range cells {
+		cellW := colWidth * float64(cell.ColSpan)
+		cellH := computeHeight(cell, nil)
+		if cellH > maxHeight {
+			maxHeight = cellH
+		}
+
+		cell.ContentX = x
+		cell.ContentY = ctx.Y
+		cell.ContentW = cellW
+		cell.ColumnIndex = colIndex
+
+		// Layout cell contents
+		cellCtx := &LayoutContext{
+			Width: cellW,
+			X:     x,
+			Y:     ctx.Y,
+		}
+		layoutChildren(cell, cellCtx)
+		cell.ContentH = computeHeight(cell, cellCtx)
+		if cell.ContentH > maxHeight {
+			maxHeight = cell.ContentH
+		}
+
+		x += cellW
+		colIndex += cell.ColSpan
+	}
+
+	box.ContentX = ctx.X
+	box.ContentY = ctx.Y
+	box.ContentW = width
+	box.ContentH = maxHeight
+
+	// Update cursor
+	ctx.Y += maxHeight
+}
+
+// layoutTableCell handles layout for a table-cell box.
+// It's positioned by its parent row.
+func layoutTableCell(box *Box, ctx *LayoutContext) {
+	width := computeWidth(box, ctx.Width)
+	height := computeHeight(box, nil)
+
+	box.ContentX = ctx.X
+	box.ContentY = ctx.Y
+	box.ContentW = width
+	box.ContentH = height
+
+	// Layout children
+	childCtx := &LayoutContext{
+		Width: width,
+		X:     ctx.X,
+		Y:     ctx.Y,
+	}
+	layoutChildren(box, childCtx)
+	box.ContentH = computeHeight(box, childCtx)
 }

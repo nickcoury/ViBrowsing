@@ -2,6 +2,7 @@ package layout
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/html"
@@ -20,6 +21,16 @@ const (
 	ImageBox
 	ListItemBox
 	HorizontalRuleBox
+	TableBox
+	TableRowBox
+	TableCellBox
+	TableCaptionBox
+	TableSectionBox
+	ButtonBox
+	SelectBox
+	TextAreaBox
+	LabelBox
+	MediaBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -42,6 +53,11 @@ type Box struct {
 
 	// Children
 	Children []*Box
+
+	// Table-specific properties
+	ColSpan    int // number of columns this cell spans (1 = normal)
+	RowSpan    int // number of rows this cell spans (1 = normal)
+	ColumnIndex int // column index for table cells
 }
 
 // GetWidth returns the computed width of the content area.
@@ -143,6 +159,10 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 
 	// Text nodes inherit parent style
 	if node.Type == html.NodeText {
+		// Skip text inside template (template content is not rendered)
+		if node.InsideTemplate() {
+			return nil
+		}
 		style := map[string]string{}
 		if parentStyle != nil {
 			for k, v := range parentStyle {
@@ -159,6 +179,12 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 
 	// Skip non-element nodes
 	if node.Type != html.NodeElement {
+		return nil
+	}
+
+	// Skip template element itself and its children (template content is not rendered)
+	// Template element is parsed into DOM but not rendered
+	if node.TagName == "template" || node.InsideTemplate() {
 		return nil
 	}
 
@@ -192,12 +218,32 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	// Default block elements
 	switch tagName {
 	case "div", "p", "h1", "h2", "h3", "h4", "h5", "h6",
-		"ul", "ol", "table", "tr", "form", "pre",
+		"ul", "ol", "form", "pre",
 		"blockquote", "address", "article", "aside",
 		"footer", "header", "main", "nav", "section",
 		"figure", "figcaption", "noscript", "details",
 		"summary":
 		box.Type = BlockBox
+	case "table":
+		box.Type = TableBox
+	case "tr":
+		box.Type = TableRowBox
+	case "td", "th":
+		box.Type = TableCellBox
+	case "tbody", "thead", "tfoot":
+		box.Type = TableSectionBox
+	case "caption":
+		box.Type = TableCaptionBox
+	case "button":
+		box.Type = ButtonBox
+	case "select":
+		box.Type = SelectBox
+	case "textarea":
+		box.Type = TextAreaBox
+	case "label":
+		box.Type = LabelBox
+	case "video", "audio":
+		box.Type = MediaBox
 	case "span", "a", "strong", "em", "b", "i", "code", "small", "br", "wbr", "cite":
 		box.Type = InlineBox
 	case "img":
@@ -213,6 +259,19 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	// Flex container
 	if display == "flex" {
 		box.Type = FlexBox
+	}
+
+	// Table display types
+	if display == "table" {
+		box.Type = TableBox
+	} else if display == "table-row" {
+		box.Type = TableRowBox
+	} else if display == "table-cell" {
+		box.Type = TableCellBox
+	} else if display == "table-caption" {
+		box.Type = TableCaptionBox
+	} else if display == "table-row-group" || display == "table-header-group" || display == "table-footer-group" {
+		box.Type = TableSectionBox
 	}
 
 	// Positioned elements
@@ -243,6 +302,28 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		}
 		if _, ok := style["height"]; !ok {
 			box.Style["height"] = "150"
+		}
+	}
+
+	// Table cell: parse colspan and rowspan attributes
+	if tagName == "td" || tagName == "th" {
+		if colspan := node.GetAttribute("colspan"); colspan != "" {
+			if v, err := strconv.Atoi(colspan); err == nil && v > 1 {
+				box.ColSpan = v
+			} else {
+				box.ColSpan = 1
+			}
+		} else {
+			box.ColSpan = 1
+		}
+		if rowspan := node.GetAttribute("rowspan"); rowspan != "" {
+			if v, err := strconv.Atoi(rowspan); err == nil && v > 1 {
+				box.RowSpan = v
+			} else {
+				box.RowSpan = 1
+			}
+		} else {
+			box.RowSpan = 1
 		}
 	}
 

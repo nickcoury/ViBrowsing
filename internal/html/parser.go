@@ -32,9 +32,12 @@ var tableRelatedTags = map[string]bool{
 }
 
 // foreignContentTags are tags that start a foreign content context (SVG, MathML).
+// foreignObject is an HTML integration point inside SVG — its children are HTML
+// content but it still participates in the foreign content stack for adoption agency.
 var foreignContentTags = map[string]bool{
-	"svg": true,
-	"math": true,
+	"svg":          true,
+	"math":         true,
+	"foreignObject": true,
 }
 
 // inForeignContent returns true if any element on the open stack is a foreign
@@ -62,6 +65,10 @@ type Parser struct {
 
 	// foreignContent tracks nesting depth of foreign content (svg/math)
 	foreignContent int
+
+	// templateDepth tracks nesting depth of <template> elements
+	// when > 0, we still parse DOM but don't create boxes during layout
+	templateDepth int
 }
 
 // NewParser creates a new parser from tokens.
@@ -76,6 +83,7 @@ func (p *Parser) Parse() *Node {
 	p.openStack = nil
 	p.fosterParenting = 0
 	p.foreignContent = 0
+	p.templateDepth = 0
 
 	// Bootstrap: synthetic html, head, body containers
 	htmlNode := NewElement("html")
@@ -119,6 +127,11 @@ func (p *Parser) Parse() *Node {
 			node := NewElement(tagName)
 			for _, attr := range token.Attributes {
 				node.Attributes = append(node.Attributes, attr)
+			}
+
+			// Track template entry
+			if tagName == "template" {
+				p.templateDepth++
 			}
 
 			// Track foreign content entry (svg/math) BEFORE HTML-specific rules.
@@ -181,6 +194,7 @@ func (p *Parser) Parse() *Node {
 			// But in foreign content (SVG/MathML), all elements push to the stack
 			// so that end tags properly close them and text nodes append correctly.
 			// The HTML voidElements list doesn't apply inside foreign content.
+			// Template is also not a void element but it pushes to stack normally.
 			if p.foreignContent > 0 || !voidElements[tagName] {
 				p.openStack = append(p.openStack, node)
 			}
@@ -194,6 +208,11 @@ func (p *Parser) Parse() *Node {
 			if tagName == "html" || tagName == "head" || tagName == "body" {
 				p.advance()
 				continue
+			}
+
+			// Track template exit
+			if tagName == "template" && p.templateDepth > 0 {
+				p.templateDepth--
 			}
 
 			// Foster parenting end tag: if closing a table, flush fosters
@@ -244,7 +263,6 @@ func (p *Parser) Parse() *Node {
 						p.openStack = p.openStack[:len(p.openStack)-1]
 						break
 					}
-					// Pop this element — it's not closed
 					p.openStack = p.openStack[:len(p.openStack)-1]
 				}
 			}

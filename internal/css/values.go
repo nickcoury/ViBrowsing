@@ -1,6 +1,7 @@
 package css
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"strconv"
@@ -341,4 +342,157 @@ func parseFloatAlpha(s string) uint8 {
 		v = 1
 	}
 	return uint8(v * 255)
+}
+
+// GradientStop represents a color stop in a CSS gradient.
+type GradientStop struct {
+	Color  Color
+	Offset float64 // 0-1 percentage
+}
+
+// ParseLinearGradient parses a linear-gradient value.
+// Format: linear-gradient(direction, color-stop1, color-stop2, ...)
+func ParseLinearGradient(s string) ([]GradientStop, string, error) {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "linear-gradient(") || !strings.HasSuffix(s, ")") {
+		return nil, "", fmt.Errorf("not a linear-gradient")
+	}
+	inner := s[16 : len(s)-1] // Remove "linear-gradient(" and ")"
+	
+	parts := splitGradientParts(inner)
+	if len(parts) < 2 {
+		return nil, "", fmt.Errorf("not enough gradient stops")
+	}
+	
+	// Parse direction (first part)
+	direction := "to bottom"
+	firstPart := strings.TrimSpace(parts[0])
+	if firstPart != "" && !strings.Contains(firstPart, "(") {
+		// Check for angle (e.g., "45deg") or direction keyword
+		if strings.HasSuffix(firstPart, "deg") {
+			direction = firstPart // Use as-is for now
+		} else if strings.HasPrefix(firstPart, "to ") {
+			direction = firstPart
+		} else {
+			// Default to "to bottom" if first part looks like a color
+			// Direction is optional, so if first part is a color, use default
+			if !isColorString(firstPart) {
+				direction = firstPart
+			}
+		}
+	}
+	
+	// Parse color stops
+	var stops []GradientStop
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Skip direction part if present
+		if i == 0 && (strings.HasPrefix(part, "to ") || strings.HasSuffix(part, "deg") || isDirectionKeyword(part)) {
+			continue
+		}
+		stop := parseGradientStop(part)
+		stops = append(stops, stop)
+	}
+	
+	return stops, direction, nil
+}
+
+func isDirectionKeyword(s string) bool {
+	dirs := []string{"top", "bottom", "left", "right", "center"}
+	for _, d := range dirs {
+		if s == d {
+			return true
+		}
+	}
+	return false
+}
+
+func isColorString(s string) bool {
+	// Check if string starts with a color indicator
+	s = strings.ToLower(s)
+	if strings.HasPrefix(s, "#") || strings.HasPrefix(s, "rgb") || strings.HasPrefix(s, "hsl") {
+		return true
+	}
+	named := []string{"black", "white", "red", "green", "blue", "yellow", "cyan", "magenta", "gray", "orange", "purple", "pink", "brown", "navy", "teal", "olive", "maroon", "silver", "lime", "aqua", "fuchsia", "transparent"}
+	for _, c := range named {
+		if s == c {
+			return true
+		}
+	}
+	return false
+}
+
+func splitGradientParts(inner string) []string {
+	var parts []string
+	var current []byte
+	depth := 0
+	for i := 0; i < len(inner); i++ {
+		c := inner[i]
+		if c == '(' {
+			depth++
+			current = append(current, c)
+		} else if c == ')' {
+			depth--
+			current = append(current, c)
+		} else if c == ',' && depth == 0 {
+			parts = append(parts, string(current))
+			current = nil
+		} else {
+			current = append(current, c)
+		}
+	}
+	if len(current) > 0 {
+		parts = append(parts, string(current))
+	}
+	return parts
+}
+
+func parseGradientStop(part string) GradientStop {
+	part = strings.TrimSpace(part)
+	
+	// Check for offset (e.g., "red 50%" or "0deg 50%")
+	parts := strings.Fields(part)
+	if len(parts) == 2 && strings.HasSuffix(parts[1], "%") {
+		offset, _ := strconv.ParseFloat(strings.TrimSuffix(parts[1], "%"), 64)
+		offset = offset / 100
+		return GradientStop{Color: ParseColor(parts[0]), Offset: offset}
+	}
+	
+	return GradientStop{Color: ParseColor(part), Offset: -1} // -1 means auto
+}
+
+// ParseRadialGradient parses a radial-gradient value.
+func ParseRadialGradient(s string) ([]GradientStop, string, string, error) {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "radial-gradient(") || !strings.HasSuffix(s, ")") {
+		return nil, "", "", fmt.Errorf("not a radial-gradient")
+	}
+	inner := s[16 : len(s)-1]
+	
+	parts := splitGradientParts(inner)
+	var stops []GradientStop
+	shape := "ellipse"
+	position := "center"
+	
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "circle") || strings.Contains(part, "ellipse") {
+			if strings.Contains(part, "circle") {
+				shape = "circle"
+			}
+		} else if strings.Contains(part, "at ") {
+			position = part
+		} else if strings.Contains(part, "%") || strings.HasPrefix(part, "#") || strings.HasPrefix(part, "rgb") || isColorString(part) {
+			stop := parseGradientStop(part)
+			stops = append(stops, stop)
+		}
+	}
+	
+	return stops, shape, position, nil
 }

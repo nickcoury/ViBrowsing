@@ -1,5 +1,7 @@
 package html
 
+import "strings"
+
 // NodeType represents the type of a DOM node.
 type NodeType int
 
@@ -76,13 +78,14 @@ func (n *Node) querySelectorAll(selector string, results *[]*Node) {
 }
 
 // matchSelector returns true if node matches the given selector.
+// Tag name matching is case-insensitive per HTML5 spec.
 func matchSelector(n *Node, selector string) bool {
 	if n.Type != NodeElement {
 		return false
 	}
 
-	// Tag name selector
-	if selector == n.TagName {
+	// Tag name selector (case-insensitive per HTML5 spec)
+	if strings.EqualFold(selector, n.TagName) {
 		return true
 	}
 
@@ -141,6 +144,18 @@ func (n *Node) GetAttribute(key string) string {
 		}
 	}
 	return ""
+}
+
+// InsideTemplate returns true if this node is a descendant of a <template> element.
+func (n *Node) InsideTemplate() bool {
+	current := n.Parent
+	for current != nil {
+		if current.Type == NodeElement && current.TagName == "template" {
+			return true
+		}
+		current = current.Parent
+	}
+	return false
 }
 
 // InnerText returns the concatenated text content of this node and all descendants.

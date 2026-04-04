@@ -6,7 +6,7 @@ import "strings"
 type TokenType int
 
 const (
-	TokenDOCTYPE TokenType = iota
+	TokenDOCTYPE TokenType= iota
 	TokenStartTag
 	TokenEndTag
 	TokenComment
@@ -45,63 +45,24 @@ func (t *Tokenizer) Next() *Token {
 	for !t.done && t.pos < len(t.input) {
 		c := t.input[t.pos]
 
-		switch {
 		// Text: accumulate until '<'
-		case c != '<':
+		if c != '<' {
 			start := t.pos
 			for t.pos < len(t.input) && t.input[t.pos] != '<' {
 				t.pos++
 			}
 			return &Token{Type: TokenCharacter, Data: decodeEntities(string(t.input[start:t.pos]))}
+		}
 
-		// Comment: <!-- ... -->
-		case t.match("<!"):
-			t.pos += 2
-			if t.match("--") {
-				t.pos += 2
-				start := t.pos
-				for t.pos < len(t.input) {
-					if t.match("-->") {
-						data := string(t.input[start:t.pos])
-						t.pos += 3
-						return &Token{Type: TokenComment, Data: data}
-					}
-					t.pos++
-				}
-				// EOF in comment
-				return &Token{Type: TokenComment, Data: string(t.input[start:])}
-			}
-			// Bogus comment: consume until '>'
-			for t.pos < len(t.input) && t.input[t.pos] != '>' {
-				t.pos++
-			}
-			if t.pos < len(t.input) {
-				t.pos++
-			}
-			continue
-
-		// End tag: </name>
-		case t.match("</"):
-			t.pos += 2
-			tagName := t.readTagName()
-			// Consume the '>' after the tag name
-			if t.pos < len(t.input) && t.input[t.pos] == '>' {
-				t.pos++
-			}
-			// Skip synthetic root end tags: parser bootstraps html/head/body
-			switch strings.ToLower(tagName) {
-			case "html", "head", "body":
-				continue
-			}
-			return &Token{Type: TokenEndTag, TagName: strings.ToLower(tagName)}
-
-		// DOCTYPE: <!DOCTYPE ...>
-		case t.match("<!DOCTYPE") || t.match("<!doctype"):
+		// Check for DOCTYPE first (must be before comment since "<!DOCTYPE" starts with "<!")
+		if t.match("<!DOCTYPE") || t.match("<!doctype") {
 			t.pos += 9
-			// Consume until '>'
+			// Collect DOCTYPE data (everything between DOCTYPE and >)
+			doctypeStart := t.pos
 			for t.pos < len(t.input) && t.input[t.pos] != '>' {
 				t.pos++
 			}
+			doctypeData := string(t.input[doctypeStart:t.pos])
 			if t.pos < len(t.input) {
 				t.pos++ // consume '>'
 			}
@@ -117,27 +78,61 @@ func (t *Tokenizer) Next() *Token {
 			// Skip synthetic root elements: parser bootstraps html/head/body
 			// This handles: <!DOCTYPE ...>\n<html> — skip the html that follows DOCTYPE
 			if t.match("<html") || t.match("<HTML") {
-				t.skipTag(); continue
+				t.skipTag()
 			}
 			if t.match("<head") || t.match("<HEAD") {
-				t.skipTag(); continue
+				t.skipTag()
 			}
 			if t.match("<body") || t.match("<BODY") {
-				t.skipTag(); continue
+				t.skipTag()
 			}
-			if t.match("</html") || t.match("</HTML") {
-				t.skipTag(); continue
+			if t.match("</html>") || t.match("</HTML>") {
+				t.skipTag()
 			}
-			if t.match("</head") || t.match("</HEAD") {
-				t.skipTag(); continue
+			if t.match("</head>") || t.match("</HEAD>") {
+				t.skipTag()
 			}
-			if t.match("</body") || t.match("</BODY") {
-				t.skipTag(); continue
+			if t.match("</body>") || t.match("</BODY>") {
+				t.skipTag()
 			}
-			continue
+			// Emit DOCTYPE token
+			return &Token{Type: TokenDOCTYPE, Data: doctypeData}
+		}
+
+		// Comment: <!-- ... --> (must be before general "<!" case)
+		if t.match("<!--") {
+			t.pos += 4
+			start := t.pos
+			for t.pos < len(t.input) {
+				if t.match("-->") {
+					data := string(t.input[start:t.pos])
+					t.pos += 3
+					return &Token{Type: TokenComment, Data: data}
+				}
+				t.pos++
+			}
+			// EOF in comment
+			return &Token{Type: TokenComment, Data: string(t.input[start:])}
+		}
+
+		// End tag: </name>
+		if t.match("</") {
+			t.pos += 2
+			tagName := t.readTagName()
+			// Consume the '>' after the tag name
+			if t.pos < len(t.input) && t.input[t.pos] == '>' {
+				t.pos++
+			}
+			// Skip synthetic root end tags: parser bootstraps html/head/body
+			switch strings.ToLower(tagName) {
+			case "html", "head", "body":
+				continue
+			}
+			return &Token{Type: TokenEndTag, TagName: strings.ToLower(tagName)}
+		}
 
 		// Start tag: <name ...>
-		case t.match("<"):
+		if t.match("<") {
 			t.pos++
 			tagName := t.readTagName()
 			tagNameLower := strings.ToLower(tagName)
@@ -156,16 +151,29 @@ func (t *Tokenizer) Next() *Token {
 			case "html", "head", "body":
 				continue
 			}
+			// Skip script content: don't emit script tag or its content
+			// This prevents JS execution (we don't execute JS in this browser)
+			if tagNameLower == "script" {
+				// Skip until </script> tag
+				for t.pos < len(t.input) {
+					if t.match("</script>") || t.match("</SCRIPT>") {
+						t.pos += 9 // skip </script>
+						break
+					}
+					t.pos++
+				}
+				continue
+			}
 			return &Token{
 				Type:        TokenStartTag,
 				TagName:     tagNameLower,
 				Attributes:  attrs,
 				SelfClosing: selfClosing,
 			}
-
-		default:
-			t.pos++
 		}
+
+		// Default: consume the stray '<' character
+		t.pos++
 	}
 
 	return nil
@@ -173,6 +181,9 @@ func (t *Tokenizer) Next() *Token {
 
 // match checks if the input at current position starts with s.
 func (t *Tokenizer) match(s string) bool {
+	if t.pos >= len(t.input) {
+		return false
+	}
 	input := string(t.input[t.pos:])
 	return strings.HasPrefix(input, s)
 }
@@ -286,7 +297,7 @@ var namedEntities = map[string]rune{
 	"frac34": '\u00BE',
 }
 
-// decodeEntities decodes HTML named and numeric character references in a string.
+// decodeEntities decodes HTML named and numeric character references in a String.
 // Handles: &name; &#nnn; &#xhh;
 func decodeEntities(s string) string {
 	var result []rune
@@ -297,7 +308,7 @@ func decodeEntities(s string) string {
 			// Collect the entity name
 			start := i + 1
 			end := start
-			for end < len(runes) && end < start+10 {
+			 for end < len(runes) && end < start+10 {
 				if runes[end] == ';' {
 					break
 				}

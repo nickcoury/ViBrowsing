@@ -1,6 +1,7 @@
 package css
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -8,6 +9,7 @@ import (
 type Rule struct {
 	Selector    string
 	Declarations []Declaration
+	MediaQuery  string // e.g., "@media (max-width: 768px)" or "" for all
 }
 
 // Declaration represents a CSS declaration: property: value.
@@ -30,15 +32,52 @@ func Parse(sheet string) []Rule {
 			break
 		}
 
-		// Skip @-rules for now
+		// Handle @-rules
 		if sheet[i] == '@' {
-			// @import url(foo.css); — find semicolon
-			if idx := strings.Index(sheet[i:], ";"); idx >= 0 {
-				i += idx + 1
-			} else {
+			// Find the end of the @ rule — could be a semicolon or an opening {
+			j := i + 1
+			for j < len(sheet) && sheet[j] != ';' && sheet[j] != '{' && sheet[j] != '}' {
+				j++
+			}
+			if j >= len(sheet) {
 				break
 			}
-			i = skipBlock(sheet, i)
+			if sheet[j] == '{' {
+				// Block @ rule like @media { ... } — parse it
+				atName := strings.TrimSpace(sheet[i+1 : j])
+				if strings.HasPrefix(atName, "media") {
+					// Parse @media query — extract condition from "@media ..."
+					mediaStart := j + 1
+					mediaDepth := 1
+					for mediaDepth > 0 && mediaStart < len(sheet) {
+						if sheet[mediaStart] == '{' {
+							mediaDepth++
+						} else if sheet[mediaStart] == '}' {
+							mediaDepth--
+						}
+						mediaStart++
+					}
+					mediaContent := sheet[j+1 : mediaStart-1]
+					mediaCond := strings.TrimSpace(mediaContent)
+					// Recursively parse the rules inside @media
+					innerRules := Parse(mediaContent)
+					for _, r := range innerRules {
+						r.MediaQuery = mediaCond
+						rules = append(rules, r)
+					}
+					i = mediaStart
+					continue
+				}
+				// Skip the block
+				i = j + 1
+				i = skipBlock(sheet, i)
+			} else if sheet[j] == ';' {
+				// Single-line @ rule like @import url(foo.css); — just skip to semicolon
+				i = j + 1
+			} else {
+				// No semicolon or brace found, skip past what we scanned and continue
+				i = j
+			}
 			continue
 		}
 
@@ -72,6 +111,39 @@ func Parse(sheet string) []Rule {
 	}
 
 	return rules
+}
+
+// MatchesMediaQuery returns true if the rule's media query matches the viewport.
+func (r Rule) MatchesMediaQuery(viewportWidth, viewportHeight float64) bool {
+	if r.MediaQuery == "" {
+		return true
+	}
+	cond := r.MediaQuery
+	if strings.Contains(cond, "max-width") {
+		parts := strings.Split(cond, "max-width")
+		if len(parts) > 1 {
+			numStr := strings.TrimSpace(parts[1])
+			numStr = strings.Trim(numStr, ":)")
+			if w, err := strconv.ParseFloat(numStr, 64); err == nil {
+				if viewportWidth > w {
+					return false
+				}
+			}
+		}
+	}
+	if strings.Contains(cond, "min-width") {
+		parts := strings.Split(cond, "min-width")
+		if len(parts) > 1 {
+			numStr := strings.TrimSpace(parts[1])
+			numStr = strings.Trim(numStr, ":)")
+			if w, err := strconv.ParseFloat(numStr, 64); err == nil {
+				if viewportWidth < w {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // ParseInline parses an inline style attribute value.
