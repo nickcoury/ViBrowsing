@@ -361,6 +361,70 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		defer c.PopClip()
 	}
 
+	// Handle clip-path CSS property
+	if clipPath := box.Style["clip-path"]; clipPath != "" && clipPath != "none" {
+		shape, err := css.ParseClipPath(clipPath)
+		if err == nil && shape.Type != "none" {
+			// Compute bounding box from clip shape
+			var bx, by, bw, bh int
+			switch shape.Type {
+			case "inset":
+				// inset(top right bottom left)
+				bx = contentX + int(shape.InsetTop)
+				by = contentY + int(shape.InsetTop)
+				bw = contentW - int(shape.InsetTop)-int(shape.InsetBottom)
+				bh = contentH - int(shape.InsetTop)-int(shape.InsetBottom)
+				if bw < 0 {
+					bw = 0
+				}
+				if bh < 0 {
+					bh = 0
+				}
+			case "circle", "ellipse":
+				// circle at center with radius
+				r := int(shape.RadiusX)
+				if r == 0 {
+					r = int(math.Min(float64(contentW), float64(contentH)) / 2)
+				}
+				cx := contentX + int(shape.CenterX*float64(contentW)/100)
+				cy := contentY + int(shape.CenterY*float64(contentH)/100)
+				// For simplicity, use bounding box
+				bx = cx - r
+				by = cy - r
+				bw = r * 2
+				bh = r * 2
+			case "polygon":
+				if len(shape.Points) >= 3 {
+					// Find bounding box
+					minX, maxX := shape.Points[0][0], shape.Points[0][0]
+					minY, maxY := shape.Points[0][1], shape.Points[0][1]
+					for _, p := range shape.Points[1:] {
+						if p[0] < minX {
+							minX = p[0]
+						}
+						if p[0] > maxX {
+							maxX = p[0]
+						}
+						if p[1] < minY {
+							minY = p[1]
+						}
+						if p[1] > maxY {
+							maxY = p[1]
+						}
+					}
+					bx = contentX + int(minX*float64(contentW)/100)
+					by = contentY + int(minY*float64(contentH)/100)
+					bw = int((maxX - minX) * float64(contentW) / 100)
+					bh = int((maxY - minY) * float64(contentH) / 100)
+				}
+			}
+			if bw > 0 && bh > 0 {
+				c.PushClip(bx, by, bw, bh)
+				defer c.PopClip()
+			}
+		}
+	}
+
 	// Check visibility - hidden boxes paint background/border/padding but not content
 	visibility, _ := box.Style["visibility"]
 	isHidden := visibility == "hidden"
@@ -623,7 +687,43 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	}
 
 	text := box.Node.Data
-	fontSize := css.ParseLength(box.Style["font-size"]).Value
+
+	// Resolve font-size to pixels, handling em units
+	// Walk up to ancestor block to find parent font size for em resolution
+	var getAncestorFontSize func(b *layout.Box) float64
+	getAncestorFontSize = func(b *layout.Box) float64 {
+		cur := b.Parent
+		for cur != nil {
+			if cur.Type == layout.BlockBox || cur.Type == layout.FlexBox || cur.Type == layout.PositionedBox {
+				l := css.ParseLength(cur.Style["font-size"])
+				switch l.Unit {
+				case css.UnitEm:
+					parentFS := getAncestorFontSize(cur)
+					return l.Value * parentFS
+				case css.UnitRem:
+					return l.Value * 16
+				default:
+					return l.Value
+				}
+			}
+			cur = cur.Parent
+		}
+		return 16
+	}
+	effectiveParentFontSize := getAncestorFontSize(box)
+	if effectiveParentFontSize == 0 {
+		effectiveParentFontSize = 16
+	}
+	l := css.ParseLength(box.Style["font-size"])
+	var fontSize float64
+	switch l.Unit {
+	case css.UnitEm:
+		fontSize = l.Value * effectiveParentFontSize
+	case css.UnitRem:
+		fontSize = l.Value * 16
+	default:
+		fontSize = l.Value
+	}
 	if fontSize == 0 {
 		fontSize = 16
 	}
@@ -1613,6 +1713,34 @@ func (c *Canvas) DrawInput(box *layout.Box) {
 			c.FillRect(x+int(float64(i)*charWidth)+2, y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
 		}
 	}
+
+	// Draw caret (text cursor) with caret-color
+	caretColor := c.parseCaretColor(box.Style["caret-color"], box.Style["color"])
+	if caretColor.A > 0 {
+		caretX := x + 4 // Position after left padding
+		caretY := y + 2
+		caretHeight := h - 4
+		caretWidth := 2
+		c.FillRect(caretX, caretY, caretWidth, caretHeight, caretColor)
+	}
+}
+
+// parseCaretColor parses the caret-color CSS property.
+// Returns the computed color or falls back to the color property or default black.
+func (c *Canvas) parseCaretColor(caretColorStr, colorStr string) css.Color {
+	caretColorStr = strings.TrimSpace(caretColorStr)
+	if caretColorStr == "" || caretColorStr == "auto" {
+		// auto falls back to the element's color property
+		colorVal := css.ParseColor(colorStr)
+		if colorVal.A > 0 {
+			return colorVal
+		}
+		return css.Color{R: 0, G: 0, B: 0, A: 255}
+	}
+	if caretColorStr == "transparent" {
+		return css.Color{R: 0, G: 0, B: 0, A: 0}
+	}
+	return css.ParseColor(caretColorStr)
 }
 
 // DrawButton renders a <button> element as a bordered box with text.
@@ -1801,6 +1929,16 @@ func (c *Canvas) DrawTextArea(box *layout.Box) {
 		if lineY < y+h-4 {
 			c.FillRect(x+4, lineY, w-8, 1, placeholderColor)
 		}
+	}
+
+	// Draw caret (text cursor) with caret-color
+	caretColor := c.parseCaretColor(box.Style["caret-color"], box.Style["color"])
+	if caretColor.A > 0 {
+		caretX := x + 4 // Position after left padding
+		caretY := y + int(fontSize) + 2
+		caretHeight := int(fontSize)
+		caretWidth := 2
+		c.FillRect(caretX, caretY, caretWidth, caretHeight, caretColor)
 	}
 }
 

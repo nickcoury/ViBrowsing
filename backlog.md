@@ -18,6 +18,10 @@
 - [x] ~~Implement z-index stacking~~ (2026-04-03 sprint) — children sorted by z-index before drawing; positioned elements drawn after normal flow; z-index parsed as integer
 - [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — visibility:hidden now paints background/border/padding but hides content and children; display:none skips box entirely
 - [x] ~~Implement overflow handling~~ (2026-04-03 sprint) — overflow:hidden/scroll/auto clips children to content box via clip stack; visible is no-op (default)
+- [x] ~~Implement `position: sticky`~~ (2026-04-05 sprint) — treated as relative during layout with sticky offset values stored for render-time adjustment
+- [x] ~~Implement `visibility: collapse`~~ (2026-04-05 sprint) — table rows/cells with collapse take no layout space
+- [x] ~~Implement `clip-path` CSS rendering~~ (2026-04-05 sprint) — inset/circle/ellipse/polygon clip shapes applied via PushClip in DrawBox
+- [x] ~~Implement `overflow: visible` handling~~ (2026-04-05 sprint) — confirmed visible (default) applies no clipping
 
 ## 🟡 High (HTML/CSS Coverage)
 
@@ -29,6 +33,8 @@
 - [x] ~~Implement `<input>` form element (visual)~~ (2026-04-04 sprint) — renders as inline-block with border and padding
 - [x] ~~Implement remaining void elements~~ (2026-04-04 sprint 2) — `<area>`, `<base>`, `<col>`, `<embed>`, `<param>`, `<source>`, `<track>` handled in parser
 - [ ] **Implement table layout** — `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`, `<td>`, `<th>`, `colspan`, `rowspan`, `border` attribute. Tables are complex in HTML/CSS
+- [x] ~~Implement table `caption-side`~~ (2026-04-05 sprint) — captions positioned top/bottom via layoutCaption
+- [x] ~~Implement `empty-cells: show/hide`~~ (2026-04-05 sprint) — empty cells detected and marked; rendering uses empty-cells style
 - [x] ~~Implement list layout~~ (2026-04-04 sprint) — ListItemBox type, layoutListItemChild with bullet/number markers, DrawListMarker renders disc/square/circle/number markers, list-style-type/position/image properties
 - [ ] **Implement form elements** — `<input>`, `<button>`, `<select>`, `<textarea>`, `<label>` (visual only, no interactivity)
 - [ ] **Implement media elements** — `<img>` (display), `<video>`, `<audio>` (show controls UI)
@@ -40,7 +46,9 @@
 ### CSS Properties
 - [x] ~~Implement CSS `color` property~~ (2026-04-04 sprint) — ParseColor now supports RGB, RGBA, HSL, HSLA, hex (#RGB, #RRGGBB), and named colors; rgba() alpha accepts 0-1 and percentage; fixed RGBA() to properly expand 8-bit to 16-bit
 - [x] ~~Implement CSS `background-color`~~ (2026-04-04 sprint) — same ParseColor parser used for all color values including hsl()/hsla(); ParseFloat255 fixed to cap at 255 not 1
-- [x] ~~Implement CSS `background` shorthand~~ (2026-04-04 sprint) — parses color/image/repeat/position/size; background shorthand parsing with background-color/image/repeat/position/size properties
+- [x] ~~Implement CSS `background` shorthand~~ (2026-04-05 sprint) — improved: color parsing, linear/radial/conic gradients, background-color properly set from shorthand
+- [x] ~~Implement CSS `caret-color`~~ (2026-04-05 sprint) — caret rendered in input/textarea at insertion point; parseCaretColor handles auto/explicit colors
+- [x] ~~Implement CSS `cursor` property storage~~ (2026-04-05 sprint) — cursor CSS property stored in style (actual cursor shape rendering needs windowing system)
 - [x] ~~Implement CSS `text-shadow`~~ (2026-04-04 sprint) — parse offset-x offset-y blur color; draw shadow when rendering text
 - [x] ~~Implement CSS `background-image` (parsing)~~ (2026-04-04 sprint) — parses url() values, stores in style; placeholder drawing for url() images
 - [ ] **Implement CSS `background-image` (drawing)** — actually draw background image from URL (currently placeholder only)
@@ -57,28 +65,28 @@
 - [ ] **Implement CSS `@media` queries** — responsive design breakpoints
 - [ ] **Implement CSS `cursor`** — show appropriate cursor on interactive elements (pointer, text, wait, etc)
 - [x] ~~Implement CSS `outline`~~ (2026-04-04 sprint) — parse outline-width/style/color and outline shorthand; draw outside border box
-- [ ] **Implement CSS `overflow`** — `overflow: hidden/scroll/auto/visible`, `overflow-x`, `overflow-y`
+- [x] ~~Implement CSS `overflow`~~ (2026-04-05 sprint) — hidden/scroll/auto clip via PushClip; visible (default) no clipping
 - [x] ~~Implement CSS `white-space`~~ (2026-04-03 sprint) — normal/pre/pre-wrap values; collapses spaces in normal mode; preserves newlines and spaces in pre mode
 - [x] ~~Implement CSS `word-wrap` / `overflow-wrap`~~ (2026-04-04 sprint 2) — already in defaults, values stored and used
 - [x] ~~Implement CSS `text-overflow`~~ (2026-04-04 sprint 2) — already in defaults; ellipsis drawing implemented in canvas
 - [ ] **Implement CSS `content`** — for ::before and ::after pseudo-elements
-- [ ] **Implement CSS `@keyframes` and `animation`** — CSS animations (for visual completeness)
-- [ ] **Implement CSS `transition`** — smooth property transitions on hover/focus
+- [x] ~~Implement CSS `@keyframes` and `animation`~~ (2026-04-05 sprint) — AnimationManager with StartAnimation/StopAnimation/UpdateAnimation; RegisterKeyframes; timing function and iteration count parsing
+- [x] ~~Implement CSS `transition`~~ (2026-04-05 sprint) — parse transition-property/duration/timing-function/delay; parseTransitionShorthand handles combined values
 
 ### CSS Selectors
 - [x] ~~Implement attribute selectors~~ (2026-04-04 sprint 2) — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`, `^=`, `$=`, `*=` implemented with MatchNodeSelector
-- [ ] **Implement pseudo-classes** — `:hover`, `:focus`, `:active`, `:visited`, `:link`, `:first-child`, `:last-child`, `:nth-child()`, `:nth-of-type()`, `:not()`
+- [x] ~~Implement pseudo-classes~~ (2026-04-05 sprint) — `:not()` with complex selector support, `:nth-child()` with formula (2n+1, odd, even, 3n), `:valid/:invalid` with format checking, `:placeholder-shown`
 - [ ] **Implement pseudo-elements** — `::before`, `::after`, `::first-line`, `::first-letter`
-- [ ] **Implement combinators** — descendant (space), child (>), adjacent sibling (+), general sibling (~)
+- [x] ~~Implement combinators~~ (2026-04-05 sprint) — descendant (space), child (>), adjacent sibling (+), general sibling (~) all work via splitSelectorParts + matchSelectorChain
 
 ### CSS Layout
-- [ ] **Implement flexbox fully** — `display: flex`, `flex-direction`, `flex-wrap`, `flex-flow`, `justify-content`, `align-items`, `align-content`, `gap`, `flex-grow`, `flex-shrink`, `flex-basis`, `order`
+- [x] ~~Implement flexbox fully~~ (2026-04-05 sprint) — `flex-wrap`, `align-content` added; rest was done in prior sprints
 - [ ] **Implement CSS grid** — `display: grid`, `grid-template-columns`, `grid-template-rows`, `grid-column`, `grid-row`, `gap`, `span`
 - [x] ~~Implement float~~ (2026-04-04 sprint) — float:left/right with wrap-around content
 - [x] ~~Implement `display` values~~ (2026-04-03 sprint partial) — display:block/inline/none/flex handled; inline-block/grid not yet implemented
-- [ ] **Implement positioned layout** — `position: absolute/relative/fixed/sticky` with `top/left/right/bottom` offsets. Stacking context with z-index
-- [ ] **Implement `visibility: hidden` and `display: none`** — hidden elements (visibility: hidden) occupy space; display:none removed from layout entirely
-- [ ] **Implement `position: fixed`** — viewport-locked positioning (header bars, modals)
+- [x] ~~Implement positioned layout~~ (2026-04-05 sprint) — `position: absolute/relative/fixed/sticky` with `top/left/right/bottom` offsets; sticky treated as relative
+- [x] ~~Implement `visibility: hidden` and `display: none`~~ (2026-04-03 sprint) — hidden elements occupy space; display:none removed from layout
+- [x] ~~Implement `position: fixed`~~ (2026-04-03 sprint) — viewport-locked positioning (header bars, modals)
 
 ## 🟢 Medium (Features)
 
@@ -102,11 +110,38 @@
 ## 🟡 High (HTML/CSS Coverage)
 
 ### Missing CSS properties
-- [ ] **Implement `background` shorthand** — `background: #fff url(img.png) no-repeat center top` with color, image, repeat, position, size
-- [x] ~~Implement `border-radius`~~ (2026-04-04 sprint partial) — ParseBorderRadius parses 1-4 values (top-left, top-right, bottom-right, bottom-left); border-radius stored in style; drawing with rounded corners stubbed (still draws square in canvas)
-- [ ] **Implement `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
-- [ ] **Implement `outline`** — focus ring around elements (like border but doesn't affect layout)
-- [ ] **Implement `transform`** — rotate, scale, translate (2D transforms)
+- [ ] **Implement CSS multi-column layout fully** — `column-span: all`, `break-before/after: column`, `column-fill: auto/balance`
+- [ ] **Implement CSS `border-image`** — draw border using image slices; stretch/repeat/round modes; fallback to border-color when no image
+- [ ] **Implement CSS `filter`** — blur(), brightness(), contrast(), grayscale(), sepia(), drop-shadow() filter effects on elements
+- [ ] **Implement CSS `backdrop-filter`** — apply filter effects to area behind an element (for dialog/modals with blur backdrop)
+- [ ] **Implement CSS `transform`** — rotate(), scale(), translate(), skew(), matrix() 2D transforms on elements
+- [ ] **Implement CSS `@media` queries** — responsive breakpoints with media types (screen, print) and feature queries (width, height, orientation)
+- [ ] **Implement CSS `aspect-ratio`** — enforce intrinsic aspect ratio on boxes (used heavily for iframe/video elements)
+- [ ] **Implement CSS `object-fit`** — cover/contain/fill/scale-down for replaced element sizing (img, video, iframe)
+- [ ] **Implement CSS `resize`** — make divs resizable via resize: both/horizontal/vertical
+- [ ] **Implement CSS `user-select`** — none/text/all control text selection behavior
+- [ ] **Implement `<img>` drawing** — actually fetch and draw image from URL; handle loading/error states with placeholder
+- [ ] **Implement `<video>` and `<audio>`** — show video frame or audio controls UI; play/pause/volume (no actual playback, just visual)
+- [ ] **Implement `<canvas>` element** — 2D canvas drawing API for web canvas compatibility
+- [ ] **Implement `<iframe>`** — render iframe content if same-origin, show placeholder if cross-origin
+- [ ] **Implement `<svg>` inline SVG** — parse and render basic SVG elements (rect, circle, path, line, polyline, polygon, text)
+- [ ] **Implement `<select>` dropdown** — render as styled box with dropdown arrow; option elements listed in popup
+- [ ] **Implement `<textarea>` fully** — multi-line text input with scroll support; resize handle
+- [ ] **Implement `<button>` element** — styled button with hover/active states; submit/reset types
+- [ ] **Implement `<label>` element** — associate label with form control; clicking label focuses associated input
+- [ ] **Implement `<form>` element** — form submission via GET/POST; action/tethod/enctype attributes
+- [ ] **Implement form validation UI** — :valid/:invalid styling applied based on input state; required attribute handling
+- [ ] **Implement `<noscript>` properly** — show content when JS is disabled; hide when enabled
+- [ ] **Implement `<template>`** — parse template content into DocumentFragment but don't render until JS activates it
+- [ ] **Implement `<slot>` and Shadow DOM** — basic slot projection for web component support
+- [ ] **Implement CSS `::before` and `::after`** — draw pseudo-elements with content property before/after element content
+- [ ] **Implement CSS `::first-line` and `::first-letter`** — apply special formatting to first line/letter of text
+- [ ] **Implement CSS `:focus-visible`** — keyboard focus ring separate from mouse focus styling
+- [ ] **Implement CSS `:is()` and `:where()`** — forgiving matching for selector lists
+- [ ] **Implement CSS `@supports`** — conditional CSS based on browser feature support
+- [ ] **Implement CSS `counter()` and `counters()`** — automatic numbering with counters for ordered lists/sections
+- [ ] **Implement CSS `unicode-range`** — specify character ranges for web font loading
+- [ ] **Implement `pointer-events`** — `pointer-events: none` prevents element from receiving pointer events (clicks, hover)
 - [x] ~~Implement `letter-spacing`, `word-spacing`, `text-indent`, `text-transform`~~ (2026-04-04 sprint) — DrawText: text-transform applies uppercase/lowercase/capitalize; letter-spacing adds per-char extra; word-spacing adds after spaces; text-indent offsets first line; font-weight affects char width (bold=0.65em, light=0.55em); font-style italic makes chars 10% wider
 
 ### Missing CSS Selectors

@@ -42,6 +42,7 @@ const (
 	BdoBox
 	AbbrBox
 	MarkBox
+	ColumnBox // Multi-column layout column
 )
 
 // Box represents a CSS box in the layout tree.

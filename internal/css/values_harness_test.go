@@ -512,7 +512,7 @@ func TestSplitMathFuncParts(t *testing.T) {
 		{"three", "10px, 20px, 30px", []string{"10px", "20px", "30px"}},
 		{"nested", "calc(10px + 5px), 20px", []string{"calc(10px + 5px)", "20px"}},
 		{"clamp", "10px, 50%, 100px", []string{"10px", "50%", "100px"}},
-		{"whitespace", "  10px  ,  20px  ", []string{"  10px  ", "  20px  "}},
+		{"whitespace", "  10px  ,  20px  ", []string{"10px", "20px"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

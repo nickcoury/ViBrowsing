@@ -37,6 +37,11 @@ func LayoutBlock(root *Box, containingWidth float64) {
 	}
 
 	layoutChildren(root, ctx)
+
+	// Set root dimensions after laying out children
+	// For the root (body), ContentW is the containing width and ContentH is the total height
+	root.ContentW = containingWidth
+	root.ContentH = ctx.Y
 }
 
 // applyVerticalAlignments positions all children in the current line box
@@ -115,6 +120,9 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			ctx.LineBoxMaxDescent = 0
 			ctx.LineBoxStartY = ctx.Y
 			ctx.LineBoxChildren = nil
+			// Reset X cursor to content area edge for block children
+			// Inline content may have advanced ctx.X past the content area
+			ctx.X = box.ContentX
 			layoutBlockChild(child, ctx)
 		case FlexBox:
 			applyVerticalAlignments(ctx)
@@ -243,6 +251,34 @@ func layoutFloatChild(box *Box, ctx *LayoutContext) {
 func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	float := box.Style["float"]
 
+	// Check for multi-column layout (CSS columns)
+	columnCount := 1
+	columnWidth := 0.0
+	columnGap := 0.0
+	if cc, ok := box.Style["column-count"]; ok && cc != "" && cc != "auto" {
+		if c, err := strconv.Atoi(cc); err == nil && c > 0 {
+			columnCount = c
+		}
+	}
+	if cw, ok := box.Style["column-width"]; ok && cw != "" && cw != "auto" {
+		if l := css.ParseLength(cw); l.Value > 0 {
+			columnWidth = l.Value
+		}
+	}
+	if cg, ok := box.Style["column-gap"]; ok && cg != "" && cg != "normal" {
+		if l := css.ParseLength(cg); l.Value > 0 {
+			columnGap = l.Value
+		}
+	} else {
+		columnGap = 16 // CSS normal gap
+	}
+
+	// Handle multi-column layout
+	if columnWidth > 0 || columnCount > 1 {
+		layoutMultiColumn(box, ctx, columnCount, columnWidth, columnGap)
+		return
+	}
+
 	// Handle float elements
 	if float == "left" || float == "right" {
 		layoutFloatChild(box, ctx)
@@ -366,10 +402,46 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 	if box.Type == TextBox {
 		text := box.Node.Data
 		whiteSpace := box.Style["white-space"]
-		fontSize := css.ParseLength(box.Style["font-size"]).Value
+
+		// Resolve font-size to pixels, handling em units
+		var getAncestorFontSize func(b *Box) float64
+		getAncestorFontSize = func(b *Box) float64 {
+			cur := b.Parent
+			for cur != nil {
+				if cur.Type == BlockBox || cur.Type == FlexBox || cur.Type == PositionedBox {
+					l := css.ParseLength(cur.Style["font-size"])
+					switch l.Unit {
+					case css.UnitEm:
+						parentFS := getAncestorFontSize(cur)
+						return l.Value * parentFS
+					case css.UnitRem:
+						return l.Value * 16
+					default:
+						return l.Value
+					}
+				}
+				cur = cur.Parent
+			}
+			return 16
+		}
+		effectiveParentFontSize := getAncestorFontSize(box)
+		if effectiveParentFontSize == 0 {
+			effectiveParentFontSize = 16
+		}
+		l := css.ParseLength(box.Style["font-size"])
+		var fontSize float64
+		switch l.Unit {
+		case css.UnitEm:
+			fontSize = l.Value * effectiveParentFontSize
+		case css.UnitRem:
+			fontSize = l.Value * 16
+		default:
+			fontSize = l.Value
+		}
 		if fontSize == 0 {
 			fontSize = 16
 		}
+
 		lineHeight := css.ParseLength(box.Style["line-height"]).Value
 		if lineHeight == 0 {
 			lineHeight = 1.2
@@ -513,10 +585,14 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 	flexDirection := box.Style["flex-direction"]
 	justifyContent := box.Style["justify-content"]
 	alignItems := box.Style["align-items"]
+	alignContent := box.Style["align-content"]
 	gapStr := box.Style["gap"]
+	flexWrap := box.Style["flex-wrap"]
 
 	isRow := flexDirection == "row" || flexDirection == "" || flexDirection == "row-reverse"
 	isReverse := flexDirection == "row-reverse" || flexDirection == "column-reverse"
+	isWrap := flexWrap == "wrap" || flexWrap == "wrap-reverse"
+	isWrapReverse := flexWrap == "wrap-reverse"
 
 	// Parse gap
 	gap := 0.0
@@ -530,6 +606,7 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 		minW   float64
 		flexW  float64
 		flexG  float64
+		flexS  float64
 	}
 	var items []flexItem
 	for _, child := range box.Children {
@@ -539,6 +616,10 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 		flexGrow := 0.0
 		if fg, ok := child.Style["flex-grow"]; ok {
 			flexGrow, _ = strconv.ParseFloat(fg, 64)
+		}
+		flexShrink := 1.0
+		if fs, ok := child.Style["flex-shrink"]; ok {
+			flexShrink, _ = strconv.ParseFloat(fs, 64)
 		}
 		flexBasis := css.ParseLength(child.Style["flex-basis"]).Value
 		if flexBasis == 0 && child.Style["flex-basis"] != "0" {
@@ -553,6 +634,7 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 			minW:   itemMinW,
 			flexW:  flexBasis,
 			flexG:  flexGrow,
+			flexS:  flexShrink,
 		})
 	}
 
@@ -562,180 +644,309 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 		return
 	}
 
-	// Two-pass flex layout
-	// Pass 1: determine initial sizes (flex-basis or min width)
-	// Pass 2: resolve flexible lengths
-
 	// For row flex, mainAxis = width, crossAxis = height
 	// For column flex, mainAxis = height, crossAxis = width
 	mainSize := width
+	crossSize := ctx.Height
 	if !isRow {
 		mainSize = ctx.Height
 		if mainSize == 0 {
 			mainSize = 600
 		}
 	}
+	if crossSize == 0 {
+		crossSize = 600
+	}
 
-	// First pass: calculate flex base sizes
-	totalFlex := 0.0
-	for _, item := range items {
-		if item.flexW > 0 {
-			totalFlex += item.flexW
+	// Build flex lines (when wrapping is enabled)
+	type flexLine struct {
+		items        []flexItem
+		mainSize     float64
+		crossSize    float64
+		totalFlexG   float64
+		available    float64
+	}
+
+	var lines []flexLine
+
+	if isWrap {
+		// Multi-line: collect items into lines
+		var currentLine []flexItem
+		currentLineMain := 0.0
+		for _, item := range items {
+			// Check if item fits in current line
+			itemMain := item.flexW
+			if itemMain == 0 {
+				itemMain = item.minW
+			}
+			if currentLineMain+itemMain+gap > mainSize && len(currentLine) > 0 {
+				// Start new line
+				lines = append(lines, flexLine{
+					items:     currentLine,
+					mainSize:  currentLineMain - gap,
+					crossSize: 0,
+				})
+				currentLine = nil
+				currentLineMain = 0
+			}
+			if len(currentLine) > 0 {
+				currentLineMain += gap
+			}
+			currentLine = append(currentLine, item)
+			currentLineMain += itemMain
+		}
+		if len(currentLine) > 0 {
+			lines = append(lines, flexLine{
+				items:    currentLine,
+				mainSize: currentLineMain - gap,
+				crossSize: 0,
+			})
+		}
+	} else {
+		// Single line (no-wrap)
+		totalMain := 0.0
+		for _, item := range items {
+			itemMain := item.flexW
+			if itemMain == 0 {
+				itemMain = item.minW
+			}
+			totalMain += itemMain
+		}
+		totalMain += gap * float64(len(items)-1)
+		lines = append(lines, flexLine{
+			items:     items,
+			mainSize:  totalMain,
+			crossSize: 0,
+		})
+	}
+
+	// Calculate cross size for each line and resolve flexible lengths
+	for li := range lines {
+		line := &lines[li]
+		totalFlex := 0.0
+		usedSpace := 0.0
+		for _, item := range line.items {
+			if item.flexW > 0 {
+				totalFlex += item.flexW
+				usedSpace += item.flexW
+			} else {
+				usedSpace += item.minW
+			}
+		}
+		line.totalFlexG = totalFlex
+		line.available = mainSize - usedSpace - gap*float64(len(line.items)-1)
+		if line.available < 0 {
+			line.available = 0
+		}
+
+		// Resolve flexible lengths
+		for i := range line.items {
+			item := &line.items[i]
+			if item.flexG > 0 && totalFlex > 0 {
+				item.flexW += line.available * item.flexG / totalFlex
+			} else if item.flexW == 0 {
+				item.flexW = item.minW
+			}
+		}
+
+		// Calculate line cross size (max of item cross-axis sizes)
+		for _, item := range line.items {
+			itemH := computeHeight(item.box, nil)
+			if itemH > line.crossSize {
+				line.crossSize = itemH
+			}
 		}
 	}
 
-	// Calculate available space
-	usedSpace := 0.0
-	for _, item := range items {
-		if item.flexW > 0 {
-			usedSpace += item.flexW
-		} else {
-			usedSpace += item.minW
+	// Total cross size (sum of all line cross sizes + gaps between lines)
+	totalCross := 0.0
+	for _, line := range lines {
+		totalCross += line.crossSize
+	}
+	if len(lines) > 1 {
+		totalCross += gap * float64(len(lines)-1)
+	}
+
+	// Calculate cross-axis offset for align-content
+	// First stretch lines if needed, then calculate offsets
+	if alignContent == "stretch" && totalCross < crossSize {
+		// Stretch lines to fill cross axis
+		stretchExtra := (crossSize - totalCross) / float64(len(lines))
+		for li := range lines {
+			lines[li].crossSize += stretchExtra
 		}
-	}
-	available := mainSize - usedSpace - gap*float64(len(items)-1)
-	if available < 0 {
-		available = 0
+		totalCross = crossSize
 	}
 
-	// Second pass: resolve flexible items
-	for i := range items {
-		item := &items[i]
-		if item.flexG > 0 && totalFlex > 0 {
-			item.flexW += available * item.flexG / totalFlex
-		} else if item.flexW == 0 {
-			item.flexW = item.minW
-		}
-	}
-
-	// Calculate total main axis size
-	totalMain := 0.0
-	for _, item := range items {
-		totalMain += item.flexW
-	}
-	totalMain += gap * float64(len(items)-1)
-
-	// Calculate cross axis size (max of item heights for row flex)
-	maxCross := 0.0
-	for _, item := range items {
-		itemH := computeHeight(item.box, nil)
-		if itemH > maxCross {
-			maxCross = itemH
-		}
-	}
-
-	// Calculate initial offset for justify-content
-	var mainCursor float64
-
-	switch justifyContent {
-	case "center":
-		mainCursor = (mainSize - totalMain) / 2
+	var crossCursor float64
+	switch alignContent {
 	case "flex-end":
-		mainCursor = mainSize - totalMain
+		crossCursor = crossSize - totalCross
+	case "center":
+		crossCursor = (crossSize - totalCross) / 2
 	case "space-between":
-		if len(items) > 1 {
-			mainCursor = 0
-		}
+		// space-between: distribute lines evenly, first at start, last at end
+		// crossCursor starts at 0, handled in line positioning loop
+		crossCursor = 0
 	case "space-around":
-		mainCursor = (mainSize - totalMain) / 2
-	default: // "flex-start" or ""
-		mainCursor = 0
+		// space-around: equal space around each line
+		space := (crossSize - totalCross) / float64(len(lines)*2)
+		crossCursor = space
+	case "stretch":
+		crossCursor = 0
+	default: // "flex-start" or "normal" or ""
+		crossCursor = 0
 	}
 
-	if isReverse {
-		mainCursor = mainSize - mainCursor
+	if isWrapReverse {
+		// wrap-reverse flips the cross-axis, so last line is at cross-start
+		crossCursor = crossSize - totalCross
 	}
 
 	// Layout each flex item
 	itemCtx := &LayoutContext{
 		Width:  width,
-		Height: maxCross,
+		Height: crossSize,
 		X:      box.ContentX,
 		Y:      box.ContentY,
 	}
 
-	for i, item := range items {
-		child := item.box
+	box.ContentH = totalCross
 
-		if isRow {
-			// Row flex: horizontal main axis
-			childX := box.ContentX + mainCursor
-			if isReverse {
-				childX = box.ContentX + mainSize - mainCursor - item.flexW
-			}
-			child.ContentX = childX
-			child.ContentY = box.ContentY
-			child.ContentW = item.flexW
-			child.ContentH = maxCross
+	// Position each line
+	for li, line := range lines {
+		// Calculate main-axis offset for justify-content
+		var mainCursor float64
+		totalMain := 0.0
+		for _, item := range line.items {
+			totalMain += item.flexW
+		}
+		totalMain += gap * float64(len(line.items)-1)
 
-			// Align self
-			align := child.Style["align-self"]
-			if align == "" {
-				align = alignItems
+		switch justifyContent {
+		case "center":
+			mainCursor = (mainSize - totalMain) / 2
+		case "flex-end":
+			mainCursor = mainSize - totalMain
+		case "space-between":
+			if len(line.items) > 1 {
+				mainCursor = 0
 			}
-			switch align {
-			case "center":
-				child.ContentY = box.ContentY + (maxCross-child.ContentH)/2
-			case "flex-end":
-				child.ContentY = box.ContentY + maxCross - child.ContentH
-			}
-
-			// Position children within flex item
-			for _, grandchild := range child.Children {
-				layoutChild(grandchild, child, itemCtx)
-			}
-
-			if isReverse {
-				mainCursor -= gap + item.flexW
+		case "space-around":
+			mainCursor = (mainSize - totalMain) / 2
+		case "space-evenly":
+			if len(line.items) > 1 {
+				mainCursor = (mainSize - totalMain) / float64(len(line.items)+1)
 			} else {
-				mainCursor += gap + item.flexW
+				mainCursor = (mainSize - totalMain) / 2
 			}
+		default: // "flex-start" or ""
+			mainCursor = 0
+		}
+
+		if isReverse {
+			mainCursor = mainSize - mainCursor
+		}
+
+		// Position each item in this line
+		for _, item := range line.items {
+			child := item.box
+			itemCtx.Height = line.crossSize
+
+			if isRow {
+				childX := box.ContentX + mainCursor
+				if isReverse {
+					childX = box.ContentX + mainSize - mainCursor - item.flexW
+				}
+				child.ContentX = childX
+				child.ContentY = box.ContentY + crossCursor
+				child.ContentW = item.flexW
+				child.ContentH = line.crossSize
+
+				// Align self
+				align := child.Style["align-self"]
+				if align == "" {
+					align = alignItems
+				}
+				switch align {
+				case "center":
+					child.ContentY = box.ContentY + crossCursor + (line.crossSize-child.ContentH)/2
+				case "flex-end":
+					child.ContentY = box.ContentY + crossCursor + line.crossSize - child.ContentH
+				case "stretch":
+					if child.ContentH < line.crossSize {
+						child.ContentH = line.crossSize
+					}
+				}
+
+				// Position children within flex item
+				for _, grandchild := range child.Children {
+					layoutChild(grandchild, child, itemCtx)
+				}
+
+				if isReverse {
+					mainCursor -= gap + item.flexW
+				} else {
+					mainCursor += gap + item.flexW
+				}
+			} else {
+				// Column flex: vertical main axis
+				childY := box.ContentY + crossCursor + mainCursor
+				if isReverse {
+					childY = box.ContentY + crossCursor + mainSize - mainCursor - item.flexW
+				}
+				child.ContentX = box.ContentX
+				child.ContentY = childY
+				child.ContentW = width
+				child.ContentH = item.flexW
+
+				// Align self
+				align := child.Style["align-self"]
+				if align == "" {
+					align = alignItems
+				}
+				switch align {
+				case "center":
+					child.ContentX = box.ContentX + (width-child.ContentW)/2
+				case "flex-end":
+					child.ContentX = box.ContentX + width - child.ContentW
+				case "stretch":
+					if child.ContentW < width {
+						child.ContentW = width
+					}
+				}
+
+				// Position children within flex item
+				itemCtx.Width = width
+				itemCtx.X = child.ContentX
+				itemCtx.Y = child.ContentY
+				for _, grandchild := range child.Children {
+					layoutChild(grandchild, child, itemCtx)
+				}
+
+				if isReverse {
+					mainCursor -= gap + item.flexW
+				} else {
+					mainCursor += gap + item.flexW
+				}
+			}
+		}
+
+		// Advance crossCursor for next line (for space-between/space-around)
+		if alignContent == "space-between" || alignContent == "space-around" {
+			// For space-between/space-around, lines are evenly distributed
+			// The crossCursor was set for the initial offset, now advance by line size + gap
+			if isWrapReverse {
+				crossCursor -= gap + line.crossSize
+			} else {
+				crossCursor += gap + line.crossSize
+			}
+		} else if isWrapReverse {
+			crossCursor -= gap + line.crossSize
 		} else {
-			// Column flex: vertical main axis
-			childY := box.ContentY + mainCursor
-			if isReverse {
-				childY = box.ContentY + mainSize - mainCursor - item.flexW
-			}
-			child.ContentX = box.ContentX
-			child.ContentY = childY
-			child.ContentW = width
-			child.ContentH = item.flexW
-
-			// Align self
-			align := child.Style["align-self"]
-			if align == "" {
-				align = alignItems
-			}
-			switch align {
-			case "center":
-				child.ContentX = box.ContentX + (width-child.ContentW)/2
-			case "flex-end":
-				child.ContentX = box.ContentX + width - child.ContentW
-			}
-
-			// Position children within flex item
-			itemCtx.Width = width
-			itemCtx.X = child.ContentX
-			itemCtx.Y = child.ContentY
-			for _, grandchild := range child.Children {
-				layoutChild(grandchild, child, itemCtx)
-			}
-
-			if isReverse {
-				mainCursor -= gap + item.flexW
-			} else {
-				mainCursor += gap + item.flexW
-			}
+			crossCursor += gap + line.crossSize
 		}
-		_ = i // silence unused variable
-	}
-
-	box.ContentH = maxCross
-	if !isRow {
-		box.ContentH = mainCursor
-		if mainCursor < 0 {
-			box.ContentH = mainSize
-		}
+		_ = li // silence unused variable
 	}
 
 	ctx.Y += marginTop + box.ContentH + marginBottom
@@ -831,9 +1042,22 @@ func layoutListItemChild(box *Box, ctx *LayoutContext) {
 	ctx.Y = nextY
 }
 
-// layoutPositionedChild handles position:absolute/relative/fixed layout.
+// layoutPositionedChild handles position:absolute/relative/fixed/sticky layout.
 func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 	position := box.Style["position"]
+
+	// visibility:collapse on table rows/cells removes them from the layout
+	if visibility := box.Style["visibility"]; visibility == "collapse" {
+		// For table rows and cells, collapse removes the space
+		// For other elements, treat as hidden
+		tag := box.Node.TagName
+		if tag == "tr" || tag == "thead" || tag == "tbody" || tag == "tfoot" || tag == "td" || tag == "th" {
+			// Collapsed table elements take no space
+			box.ContentW = 0
+			box.ContentH = 0
+			return
+		}
+	}
 
 	if position == "fixed" {
 		// Fixed is relative to viewport
@@ -845,10 +1069,22 @@ func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 		}
 	}
 
+	// position:sticky acts like relative, but is positioned based on scroll offset
+	// For simplicity in batch rendering, treat sticky as relative with special flags
+	if position == "sticky" {
+		// Store sticky offset values in style for render-time adjustment
+		box.Style["_stickyTop"] = box.Style["top"]
+		box.Style["_stickyLeft"] = box.Style["left"]
+		box.Style["_stickyRight"] = box.Style["right"]
+		box.Style["_stickyBottom"] = box.Style["bottom"]
+		// Treat as relative for layout purposes
+		position = "relative"
+	}
+
 	top := css.ParseLength(box.Style["top"])
 	left := css.ParseLength(box.Style["left"])
-	_ = css.ParseLength(box.Style["right"])  // right/bottom not yet used
-	_ = css.ParseLength(box.Style["bottom"])
+	right := css.ParseLength(box.Style["right"])
+	bottom := css.ParseLength(box.Style["bottom"])
 
 	width := computeWidth(box, ctx.Width)
 
@@ -858,9 +1094,15 @@ func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 		box.ContentY = ctx.Y + css.ParseLength(box.Style["margin-top"]).Value
 		if !left.IsAuto {
 			box.ContentX = ctx.X + left.Value
+		} else if !right.IsAuto {
+			// right offset with auto left: position from right edge
+			box.ContentX = ctx.X + ctx.Width - width - right.Value
 		}
 		if !top.IsAuto {
 			box.ContentY = ctx.Y + top.Value
+		} else if !bottom.IsAuto {
+			// bottom offset with auto top: position from bottom edge
+			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom.Value
 		}
 	} else {
 		// Absolute: removed from flow, positioned relative to containing block
@@ -868,14 +1110,28 @@ func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 		box.ContentY = ctx.Y
 		if !left.IsAuto {
 			box.ContentX = ctx.X + left.Value
+		} else if !right.IsAuto {
+			// right offset with auto left: position from right edge
+			box.ContentX = ctx.X + ctx.Width - width - right.Value
 		}
 		if !top.IsAuto {
 			box.ContentY = ctx.Y + top.Value
+		} else if !bottom.IsAuto {
+			// bottom offset with auto top: position from bottom edge
+			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom.Value
 		}
 	}
 
 	box.ContentW = width
 	box.ContentH = computeHeight(box, ctx)
+
+	// For absolute with right/bottom but auto left/right: fit width between left and right
+	if position == "absolute" && !right.IsAuto && left.IsAuto {
+		box.ContentW = ctx.Width - (box.ContentX - ctx.X) - right.Value
+		if box.ContentW < 0 {
+			box.ContentW = 0
+		}
+	}
 
 	// Layout children within positioned box
 	childCtx := &LayoutContext{
@@ -958,15 +1214,24 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 	width := computeWidth(box, ctx.Width)
 	marginTop := css.ParseLength(box.Style["margin-top"]).Value
 	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
 
 	box.ContentX = ctx.X + marginLeft
 	box.ContentY = ctx.Y + marginTop
 	box.ContentW = width
 
-	// Gather all table rows (direct children that are table-row boxes or from sections)
+	captionSide := box.Style["caption-side"]
+	if captionSide == "" {
+		captionSide = "top"
+	}
+
+	// Find caption and table rows/sections
+	var caption *Box
 	var tableRows []*Box
 	for _, child := range box.Children {
-		if child.Type == TableRowBox {
+		if child.Type == TableCaptionBox {
+			caption = child
+		} else if child.Type == TableRowBox {
 			tableRows = append(tableRows, child)
 		} else if child.Type == TableSectionBox {
 			// For section boxes, collect their row children
@@ -978,22 +1243,67 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 		}
 	}
 
+	// Layout caption if present
+	captionHeight := 0.0
+	if caption != nil {
+		captionCtx := &LayoutContext{
+			Width: width,
+			X:     box.ContentX,
+			Y:     box.ContentY,
+		}
+		if captionSide == "top" {
+			layoutCaption(caption, captionCtx, "top")
+			captionHeight = caption.ContentH
+		}
+	}
+
 	// Layout each row and compute total table height
 	totalHeight := 0.0
 	for _, row := range tableRows {
 		layoutTableRow(row, &LayoutContext{
 			Width: width,
 			X:     box.ContentX,
-			Y:     box.ContentY + totalHeight,
+			Y:     box.ContentY + captionHeight + totalHeight,
 		})
 		totalHeight += row.ContentH
 	}
 
-	box.ContentH = totalHeight
+	// Layout caption on bottom if caption-side is bottom
+	if caption != nil && captionSide == "bottom" {
+		captionCtx := &LayoutContext{
+			Width: width,
+			X:     box.ContentX,
+			Y:     box.ContentY + captionHeight + totalHeight,
+		}
+		layoutCaption(caption, captionCtx, "bottom")
+		captionHeight += caption.ContentH
+	}
+
+	box.ContentH = captionHeight + totalHeight
 
 	// Update cursor
-	nextY := box.ContentY + box.ContentH + css.ParseLength(box.Style["margin-bottom"]).Value
+	nextY := box.ContentY + box.ContentH + marginBottom
 	ctx.Y = nextY
+}
+
+// layoutCaption handles layout for a table caption.
+func layoutCaption(box *Box, ctx *LayoutContext, side string) {
+	width := computeWidth(box, ctx.Width)
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+
+	box.ContentX = ctx.X
+	box.ContentY = ctx.Y + marginTop
+	box.ContentW = width
+
+	// Layout children within caption
+	childCtx := &LayoutContext{
+		Width: width,
+		X:     box.ContentX,
+		Y:     box.ContentY,
+	}
+	layoutChildren(box, childCtx)
+	box.ContentH = computeHeight(box, childCtx) + marginTop + marginBottom
 }
 
 // layoutTableRow handles layout for a table-row box.
@@ -1073,6 +1383,22 @@ func layoutTableCell(box *Box, ctx *LayoutContext) {
 	box.ContentW = width
 	box.ContentH = height
 
+	// Check if cell is empty (no visible content)
+	// A cell is considered empty if it has no text or inline content children
+	isEmpty := true
+	for _, child := range box.Children {
+		if child.Type == TextBox && strings.TrimSpace(child.Node.Data) != "" {
+			isEmpty = false
+			break
+		}
+		if child.Type != TextBox {
+			isEmpty = false
+			break
+		}
+	}
+	// Store empty state for rendering (empty-cells property affects rendering)
+	box.Style["_empty"] = strconv.FormatBool(isEmpty)
+
 	// Layout children
 	childCtx := &LayoutContext{
 		Width: width,
@@ -1081,4 +1407,138 @@ func layoutTableCell(box *Box, ctx *LayoutContext) {
 	}
 	layoutChildren(box, childCtx)
 	box.ContentH = computeHeight(box, childCtx)
+}
+
+// layoutMultiColumn handles CSS multi-column layout (column-count, column-width, column-gap).
+func layoutMultiColumn(box *Box, ctx *LayoutContext, columnCount int, columnWidth float64, columnGap float64) {
+	width := computeWidth(box, ctx.Width)
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+
+	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+	box.ContentY = ctx.Y + marginTop
+	box.ContentW = width
+
+	// Calculate actual column count and width
+	// If column-width is specified and column-count is auto, calculate column count
+	// If column-count is specified and column-width is auto, calculate column width
+	// If both are specified, use whichever creates fewer columns
+	actualCount := columnCount
+	actualWidth := columnWidth
+
+	if columnWidth > 0 && columnCount == 1 {
+		// column-width is specified, calculate column count
+		// formula: n = max(1, floor((availableWidth + columnGap) / (columnWidth + columnGap)))
+		if columnGap > 0 {
+			actualCount = int((width + columnGap) / (columnWidth + columnGap))
+		} else {
+			actualCount = int(width / columnWidth)
+		}
+		if actualCount < 1 {
+			actualCount = 1
+		}
+		actualWidth = columnWidth
+	} else if columnCount > 1 && columnWidth == 0 {
+		// column-count is specified, calculate column width
+		// total gap space = columnGap * (actualCount - 1)
+		// columnWidth = (width - totalGapSpace) / actualCount
+		gapSpace := columnGap * float64(columnCount-1)
+		actualWidth = (width - gapSpace) / float64(columnCount)
+		actualCount = columnCount
+	} else if columnWidth > 0 && columnCount > 1 {
+		// Both specified - use whichever creates fewer columns
+		// Calculate columns from width
+		countFromWidth := int((width + columnGap) / (columnWidth + columnGap))
+		if countFromWidth < 1 {
+			countFromWidth = 1
+		}
+		// Use min of specified count and calculated count
+		if countFromWidth < columnCount {
+			actualCount = countFromWidth
+			actualWidth = columnWidth
+		} else {
+			actualCount = columnCount
+			gapSpace := columnGap * float64(columnCount-1)
+			actualWidth = (width - gapSpace) / float64(columnCount)
+		}
+	}
+
+	if actualCount < 1 {
+		actualCount = 1
+	}
+	if actualWidth < 10 {
+		actualWidth = width / float64(actualCount)
+	}
+
+	// Calculate column gap
+	totalGapSpace := columnGap * float64(actualCount-1)
+	if totalGapSpace < 0 {
+		totalGapSpace = 0
+	}
+	actualColWidth := (width - totalGapSpace) / float64(actualCount)
+
+	// Create column boxes and distribute children
+	// For simplicity, we create virtual column boxes that hold the distributed content
+	var columns []*Box
+	for i := 0; i < actualCount; i++ {
+		col := &Box{
+			Type:   ColumnBox,
+			Node:   box.Node,
+			Parent: box,
+			Style:  make(map[string]string),
+			Children: []*Box{},
+		}
+		col.ContentX = box.ContentX + float64(i)*(actualColWidth+columnGap)
+		col.ContentY = box.ContentY
+		col.ContentW = actualColWidth
+		col.ContentH = 0
+		columns = append(columns, col)
+	}
+
+	// Distribute children across columns
+	// Simple distribution: round-robin based on content type
+	// Block-level children go into columns sequentially
+	colIndex := 0
+	for _, child := range box.Children {
+		if columns[colIndex].ContentH > 0 {
+			// Add some height for the separator between block children in same column
+			// Actually, we just append and layout - spacing handled in child layout
+		}
+		child.Parent = columns[colIndex]
+		columns[colIndex].Children = append(columns[colIndex].Children, child)
+		colIndex = (colIndex + 1) % actualCount
+	}
+
+	// Layout content in each column
+	maxColHeight := 0.0
+	for i, col := range columns {
+		childCtx := &LayoutContext{
+			Width: actualColWidth,
+			X:     col.ContentX,
+			Y:     col.ContentY,
+		}
+		// Layout children of the column
+		for _, child := range col.Children {
+			layoutChild(child, col, childCtx)
+		}
+		col.ContentH = childCtx.Y - col.ContentY
+		if col.ContentH > maxColHeight {
+			maxColHeight = col.ContentH
+		}
+		// Update column position based on max height found so far
+		columns[i].ContentH = col.ContentH
+	}
+
+	// Set box dimensions
+	box.ContentH = maxColHeight
+
+	// Note: columns are not stored in box.Children to avoid double-layout
+	// The column information is stored for rendering in a special style property
+	box.Style["_columnCount"] = strconv.Itoa(actualCount)
+	box.Style["_columnWidth"] = strconv.FormatFloat(actualColWidth, 'f', 2, 64)
+	box.Style["_columnGap"] = strconv.FormatFloat(columnGap, 'f', 2, 64)
+
+	// Advance cursor
+	nextY := box.ContentY + box.ContentH + marginBottom
+	ctx.Y = nextY
 }

@@ -265,6 +265,71 @@ func TestLayout_FlexLayout(t *testing.T) {
 				return nil
 			},
 		},
+		// flex-wrap tests
+		{
+			name: "flex-wrap wrap",
+			html: "<div style='display:flex;flex-wrap:wrap;width:200px'><div style='width:120px'>A</div><div style='width:120px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "flex-wrap nowrap",
+			html: "<div style='display:flex;flex-wrap:nowrap;width:200px'><div style='width:120px'>A</div><div style='width:120px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "flex-wrap wrap-reverse",
+			html: "<div style='display:flex;flex-wrap:wrap-reverse;width:200px'><div style='width:120px'>A</div><div style='width:120px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// align-content tests
+		{
+			name: "align-content flex-start",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:flex-start;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div><div style='width:100px;height:50px'>C</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "align-content flex-end",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:flex-end;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "align-content center",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:center;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "align-content space-between",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:space-between;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "align-content space-around",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:space-around;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "align-content stretch",
+			html: "<div style='display:flex;flex-wrap:wrap;align-content:stretch;height:200px;width:200px'><div style='width:100px;height:50px'>A</div><div style='width:100px;height:50px'>B</div></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -485,6 +550,36 @@ func TestLayout_TableLayout(t *testing.T) {
 		{
 			name: "thead tbody",
 			html: "<table><thead><tr><th>H1</th><th>H2</th></tr></thead><tbody><tr><td>C1</td><td>C2</td></tr></tbody></table>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// Table caption tests
+		{
+			name: "table with caption top",
+			html: "<table><caption>Caption</caption><tr><td>A</td><td>B</td></tr></table>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "table with caption bottom",
+			html: "<table style='caption-side:bottom'><caption>Caption</caption><tr><td>A</td><td>B</td></tr></table>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// Empty cells tests
+		{
+			name: "table with empty cell",
+			html: "<table><tr><td>A</td><td></td></tr></table>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "table with empty-cells hide",
+			html: "<table style='empty-cells:hide'><tr><td>A</td><td></td></tr></table>",
 			check: func(box *Box) error {
 				return nil
 			},
@@ -804,6 +899,65 @@ func TestLayout_CSSProperties(t *testing.T) {
 				if ov := child.Style["overflow"]; ov != "scroll" {
 					t.Errorf("expected overflow scroll, got %s", ov)
 				}
+				return nil
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			box := buildLayout("<html><body>"+tc.html+"</body></html>", "")
+			if box != nil {
+				LayoutBlock(box, 800)
+			}
+			if err := tc.check(box); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
+func TestLayout_MultiColumnLayout(t *testing.T) {
+	tests := []struct {
+		name  string
+		html  string
+		check func(box *Box) error
+	}{
+		// column-count tests
+		{
+			name: "column-count 2",
+			html: "<div style='column-count:2'><p>Para 1</p><p>Para 2</p><p>Para 3</p></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		{
+			name: "column-count 3",
+			html: "<div style='column-count:3'><p>Para 1</p><p>Para 2</p><p>Para 3</p><p>Para 4</p></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// column-width tests
+		{
+			name: "column-width",
+			html: "<div style='column-width:200px'><p>Content</p></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// column-gap tests
+		{
+			name: "column-gap",
+			html: "<div style='column-count:2;column-gap:30px'><p>Para 1</p><p>Para 2</p></div>",
+			check: func(box *Box) error {
+				return nil
+			},
+		},
+		// Both column-count and column-width
+		{
+			name: "column-count and column-width",
+			html: "<div style='column-count:3;column-width:150px'><p>Content</p></div>",
+			check: func(box *Box) error {
 				return nil
 			},
 		},

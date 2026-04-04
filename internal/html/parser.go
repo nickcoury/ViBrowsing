@@ -204,8 +204,10 @@ func (p *Parser) Parse() *Node {
 		case TokenEndTag:
 			tagName := strings.ToLower(token.TagName)
 
-			// Ignore synthetic end tags
+			// Handle synthetic end tags - pop to the corresponding node
 			if tagName == "html" || tagName == "head" || tagName == "body" {
+				// Pop until we find this tag
+				p.popTo(tagName)
 				p.advance()
 				continue
 			}

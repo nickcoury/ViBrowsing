@@ -137,6 +137,10 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"text-decoration-style": "solid",
 		"will-change":         "auto",
 		"image-rendering":     "auto",
+		"caption-side":        "top",
+		"empty-cells":         "show",
+		"caret-color":         "auto",
+		"appearance":          "auto",
 		"contain":             "none",
 		"mix-blend-mode":      "normal",
 		"hanging-punctuation": "none",
@@ -371,6 +375,10 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"text-decoration-style": "solid",
 		"will-change":         "auto",
 		"image-rendering":     "auto",
+		"caption-side":        "top",
+		"empty-cells":         "show",
+		"caret-color":         "auto",
+		"appearance":          "auto",
 		"contain":             "none",
 		"mix-blend-mode":      "normal",
 		"hanging-punctuation": "none",
@@ -378,6 +386,14 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 
 	// Element-specific defaults
 	switch tagName {
+	case "html":
+		props["display"] = "block"
+	case "body":
+		props["display"] = "block"
+		props["margin-top"] = "8px"
+		props["margin-right"] = "8px"
+		props["margin-bottom"] = "8px"
+		props["margin-left"] = "8px"
 	case "strong", "b", "th":
 		props["font-weight"] = "bold"
 	case "em", "i", "cite", "var":
@@ -387,6 +403,38 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		if tagName == "pre" {
 			props["white-space"] = "pre"
 		}
+	case "h1":
+		props["display"] = "block"
+		props["font-size"] = "2em"
+		props["font-weight"] = "bold"
+	case "h2":
+		props["display"] = "block"
+		props["font-size"] = "1.5em"
+		props["font-weight"] = "bold"
+	case "h3":
+		props["display"] = "block"
+		props["font-size"] = "1.17em"
+		props["font-weight"] = "bold"
+	case "h4":
+		props["display"] = "block"
+		props["font-size"] = "1em"
+		props["font-weight"] = "bold"
+	case "h5":
+		props["display"] = "block"
+		props["font-size"] = "0.83em"
+		props["font-weight"] = "bold"
+	case "h6":
+		props["display"] = "block"
+		props["font-size"] = "0.67em"
+		props["font-weight"] = "bold"
+	case "p":
+		props["display"] = "block"
+	case "div", "header", "footer", "nav", "section", "article", "aside", "main", "figure", "figcaption", "details", "summary":
+		props["display"] = "block"
+	case "ul", "ol":
+		props["display"] = "block"
+	case "li":
+		props["display"] = "list-item"
 	case "blockquote":
 		props["display"] = "block"
 		props["margin-left"] = "40px"
@@ -395,8 +443,6 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 	case "address":
 		props["display"] = "block"
 		props["font-style"] = "italic"
-	case "header", "footer", "nav", "section", "article", "aside", "main", "figure", "figcaption", "details", "summary":
-		props["display"] = "block"
 	case "noscript":
 		props["display"] = "block"
 	case "hr":
@@ -456,6 +502,14 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		props["text-decoration"] = "line-through"
 	case "ins", "u":
 		props["text-decoration"] = "underline"
+	case "img":
+		props["display"] = "inline-block"
+	case "a":
+		props["display"] = "inline"
+		props["color"] = "blue"
+		props["text-decoration"] = "underline"
+	case "span", "sup", "sub", "small", "mark":
+		props["display"] = "inline"
 	}
 
 	for _, rule := range rules {
@@ -683,23 +737,194 @@ func parseAttributeSelector(selector string) (string, string, string) {
 
 // MatchNodeSelector returns true if the element node matches the full CSS selector.
 // This handles tag names, IDs, classes, attribute selectors ([attr], [attr=value], etc.),
+// pseudo-classes (:hover, :first-child, :not(), :nth-child()), pseudo-elements (::before, ::after),
 // and combinators (descendant space, child >, adjacent sibling +, general sibling ~).
 func MatchNodeSelector(node *html.Node, selector string) bool {
 	if node == nil || node.Type != html.NodeElement {
 		return false
 	}
 
-	// Parse the selector into component parts (simple selectors + combinators)
-	// A simple selector is: tag#id.class[attr]*:type
-	// Combinators separate simple selectors: " " (descendant), ">" (child), "+" (adjacent), "~" (sibling)
-
-	// For now, implement basic selector matching without complex combinator chains
-	// Complex chains (div > p + span) require ancestor/sibling walking
-
 	sel := strings.TrimSpace(selector)
+	if sel == "" {
+		return false
+	}
 
-	// Handle simple selectors (no leading combinator)
-	return matchSimpleSelector(node, sel)
+	// Split by combinators while preserving them
+	// Combinators: " " (descendant), ">" (child), "+" (adjacent sibling), "~" (general sibling)
+	parts := splitSelectorParts(sel)
+	if len(parts) == 0 {
+		return false
+	}
+
+	// parts[0] is the first simple selector, parts[1+] are (combinator, simple selector) pairs
+	if len(parts) == 1 {
+		return matchSimpleSelector(node, parts[0])
+	}
+
+	// Multi-part selector: walk the DOM starting from this node
+	return matchSelectorChain(node, parts)
+}
+
+// splitSelectorParts splits a selector into simple selector parts separated by combinators.
+func splitSelectorParts(sel string) []string {
+	var parts []string
+	var current strings.Builder
+	inAttr := false
+	inParen := 0
+	i := 0
+	for i < len(sel) {
+		c := sel[i]
+		if c == '[' {
+			inAttr = true
+			current.WriteByte(c)
+			i++
+		} else if c == ']' {
+			inAttr = false
+			current.WriteByte(c)
+			i++
+		} else if c == '(' {
+			inParen++
+			current.WriteByte(c)
+			i++
+		} else if c == ')' {
+			inParen--
+			current.WriteByte(c)
+			i++
+		} else if (c == ' ' || c == '>' || c == '+' || c == '~') && !inAttr && inParen == 0 {
+			// Found a combinator
+			part := strings.TrimSpace(current.String())
+			if part != "" {
+				parts = append(parts, part)
+			}
+			// Skip whitespace before combinator
+			for i < len(sel) && sel[i] == ' ' {
+				i++
+			}
+			// Add the combinator as its own part
+			if i < len(sel) && (sel[i] == '>' || sel[i] == '+' || sel[i] == '~') {
+				parts = append(parts, string(sel[i]))
+				i++
+			}
+			// Skip whitespace after combinator
+			for i < len(sel) && sel[i] == ' ' {
+				i++
+			}
+			current.Reset()
+		} else {
+			current.WriteByte(c)
+			i++
+		}
+	}
+	part := strings.TrimSpace(current.String())
+	if part != "" {
+		parts = append(parts, part)
+	}
+	return parts
+}
+
+// matchSelectorChain matches a chain of simple selectors separated by combinators.
+func matchSelectorChain(node *html.Node, parts []string) bool {
+	if len(parts) == 0 {
+		return false
+	}
+
+	// Start with the first simple selector
+	curr := node
+	if !matchSimpleSelector(curr, parts[0]) {
+		return false
+	}
+
+	// Process remaining (combinator, selector) pairs
+	i := 1
+	for i < len(parts) {
+		if i+1 >= len(parts) {
+			break
+		}
+		combinator := parts[i]
+		selector := parts[i+1]
+		i += 2
+
+		var next *html.Node
+		switch combinator {
+		case ">":
+			// Child: direct parent
+			next = findDirectParent(curr)
+		case "+":
+			// Adjacent sibling: immediately preceding sibling
+			next = findPrecedingSibling(curr)
+		case "~":
+			// General sibling: any preceding sibling
+			next = findAnyPrecedingSibling(curr)
+		default:
+			// Descendant (space): any ancestor
+			next = findAncestor(curr)
+		}
+
+		if next == nil {
+			return false
+		}
+		curr = next
+
+		// If combinator was descendant, we need to walk up and find a matching ancestor
+		if combinator == " " {
+			found := false
+			for curr != nil {
+				if matchSimpleSelector(curr, selector) {
+					found = true
+					break
+				}
+				curr = curr.Parent
+			}
+			if !found {
+				return false
+			}
+		} else {
+			if !matchSimpleSelector(curr, selector) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func findDirectParent(node *html.Node) *html.Node {
+	return node.Parent
+}
+
+func findPrecedingSibling(node *html.Node) *html.Node {
+	if node.Parent == nil {
+		return nil
+	}
+	for _, sib := range node.Parent.Children {
+		if sib == node {
+			return nil // No preceding sibling found (we're the first)
+		}
+		if sib.Type == html.NodeElement {
+			// Return the element immediately before us
+			return sib
+		}
+	}
+	return nil
+}
+
+func findAnyPrecedingSibling(node *html.Node) *html.Node {
+	if node.Parent == nil {
+		return nil
+	}
+	var prev *html.Node
+	for _, sib := range node.Parent.Children {
+		if sib == node {
+			return prev
+		}
+		if sib.Type == html.NodeElement {
+			prev = sib
+		}
+	}
+	return nil
+}
+
+func findAncestor(node *html.Node) *html.Node {
+	return node.Parent
 }
 
 // matchSimpleSelector matches a simple selector (no combinators) against a node.
@@ -765,27 +990,52 @@ func matchSimpleSelector(node *html.Node, selector string) bool {
 			}
 
 		case ':':
-			// Pseudo-class selector (partial implementation)
+			// Pseudo-class or pseudo-element
 			sel = sel[1:]
-			if sel[0] == ':' {
-				// Pseudo-element — skip for now (::before, ::after)
-				sel = sel[1:]
+			if len(sel) == 0 {
+				return false
 			}
-			// Skip pseudo-class arguments for now
-			if len(sel) > 0 && sel[0] == '(' {
-				depth := 1
+			if sel[0] == ':' {
+				// Pseudo-element (::before, ::after) — for now, treated as matching
 				sel = sel[1:]
-				for len(sel) > 0 && depth > 0 {
-					if sel[0] == '(' {
+				continue
+			}
+			// Parse pseudo-class name and optional argument
+			var pseudoName string
+			var pseudoArg string
+			if idx := strings.Index(sel, "("); idx >= 0 {
+				pseudoName = sel[:idx]
+				argStart := idx + 1
+				depth := 1
+				for i := argStart; i < len(sel); i++ {
+					if sel[i] == '(' {
 						depth++
-					} else if sel[0] == ')' {
+					} else if sel[i] == ')' {
 						depth--
+						if depth == 0 {
+							pseudoArg = sel[argStart:i]
+							sel = sel[i+1:]
+							break
+						}
 					}
-					sel = sel[1:]
 				}
-				if len(sel) > 0 {
-					sel = sel[1:]
+				if depth != 0 {
+					return false
 				}
+			} else {
+				// No argument — find end of pseudo name
+				end := 0
+				for end < len(sel) && (isAlphanumeric(sel[end]) || sel[end] == '-') {
+					end++
+				}
+				pseudoName = sel[:end]
+				sel = sel[end:]
+			}
+			pseudoName = strings.ToLower(pseudoName)
+
+			// Evaluate the pseudo-class
+			if !matchPseudoClass(node, pseudoName, pseudoArg) {
+				return false
 			}
 
 		default:
@@ -803,6 +1053,114 @@ func matchSimpleSelector(node *html.Node, selector string) bool {
 	}
 
 	return true
+}
+
+// isAlphanumeric returns true if c is an ASCII letter or digit.
+func isAlphanumeric(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+// matchPseudoClass evaluates a pseudo-class against a node.
+// pseudoName is the lowercased pseudo-class name (e.g., "first-child", "not", "nth-child").
+// pseudoArg is the optional argument (e.g., "2n+1" for :nth-child).
+func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
+	switch pseudoName {
+	case "first-child":
+		if node.Parent == nil {
+			return false
+		}
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement {
+				return child == node
+			}
+		}
+		return false
+	case "last-child":
+		if node.Parent == nil {
+			return false
+		}
+		var lastElement *html.Node
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement {
+				lastElement = child
+			}
+		}
+		return lastElement == node
+	case "only-child":
+		if node.Parent == nil {
+			return false
+		}
+		count := 0
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement {
+				count++
+			}
+		}
+		return count == 1
+	case "nth-child":
+		return MatchNthChild(node, pseudoArg, false, false)
+	case "nth-of-type":
+		return MatchNthChild(node, pseudoArg, true, false)
+	case "nth-last-child":
+		return MatchNthChild(node, pseudoArg, false, true)
+	case "first-of-type":
+		if node.Parent == nil {
+			return false
+		}
+		tag := node.TagName
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement && child.TagName == tag {
+				return child == node
+			}
+		}
+		return false
+	case "last-of-type":
+		if node.Parent == nil {
+			return false
+		}
+		tag := node.TagName
+		var last *html.Node
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement && child.TagName == tag {
+				last = child
+			}
+		}
+		return last == node
+	case "empty":
+		for _, child := range node.Children {
+			if child.Type == html.NodeElement {
+				return false
+			}
+			if child.Type == html.NodeText && strings.TrimSpace(child.Data) != "" {
+				return false
+			}
+		}
+		return true
+	case "not":
+		// :not(selector) — matches if the argument selector does NOT match
+		return MatchNot(node, pseudoArg)
+	case "hover", "focus", "active", "visited", "link":
+		// State pseudo-classes — for now, treat as matching (no interactivity state tracking)
+		return true
+	case "checked":
+		// For input[type=checkbox] and input[type=radio]
+		typ := strings.ToLower(node.GetAttribute("type"))
+		if node.GetAttribute("checked") != "" || typ == "checkbox" || typ == "radio" {
+			return node.GetAttribute("checked") != ""
+		}
+		return false
+	case "valid":
+		// Form validation — checks proper formatting for required fields
+		return IsValid(node)
+	case "invalid":
+		// Form validation — inverse of valid
+		return IsInvalid(node)
+	case "placeholder-shown":
+		return PlaceholderShown(node)
+	default:
+		// Unknown pseudo-class — treat as matching for forward compatibility
+		return true
+	}
 }
 
 func tagMatch(elTag, selTag string) bool {
@@ -927,13 +1285,12 @@ func applyDecl(props map[string]string, decl Declaration) {
 	case "background":
 		// background shorthand: [color] [image] [repeat] [position] [/ size]
 		// Parse space-separated values into component properties
-		// Store color in "background" (backward compat for canvas.go)
 		parts := strings.Fields(value)
+		colorSet := false
 		for _, part := range parts {
 			lower := strings.ToLower(part)
 			if strings.HasPrefix(lower, "url(") {
 				props["background-image"] = part
-				props["background"] = value // keep full shorthand too
 			} else if part == "no-repeat" || part == "repeat" || part == "repeat-x" || part == "repeat-y" || part == "space" || part == "round" {
 				props["background-repeat"] = part
 			} else if part == "left" || part == "right" || part == "top" || part == "bottom" || part == "center" {
@@ -944,15 +1301,27 @@ func applyDecl(props map[string]string, decl Declaration) {
 					props["background-position"] = strings.TrimSpace(posParts[0])
 					props["background-size"] = strings.TrimSpace(posParts[1])
 				}
-			} else if lower == "transparent" || lower == "inherit" {
-				props["background"] = part
-			} else if ParseColor(part).A > 0 {
-				props["background"] = part
+			} else if lower == "transparent" {
+				props["background-color"] = "transparent"
+				colorSet = true
+			} else if lower == "inherit" || lower == "initial" || lower == "unset" {
+				props["background-color"] = part
+				colorSet = true
+			} else if strings.HasPrefix(lower, "linear-gradient") || strings.HasPrefix(lower, "radial-gradient") || strings.HasPrefix(lower, "conic-gradient") {
+				props["background-image"] = part
+			} else if col := ParseColor(part); col.A > 0 {
+				props["background-color"] = part
+				colorSet = true
 			}
 		}
-		// If no specific part matched, store the whole value in background
-		if props["background"] == "" {
-			props["background"] = value
+		// Store the full shorthand value for canvas.go to parse
+		props["background"] = value
+		// If no color was identified, treat last color-like value as background-color
+		if !colorSet && len(parts) > 0 {
+			last := strings.ToLower(parts[len(parts)-1])
+			if ParseColor(parts[len(parts)-1]).A > 0 {
+				props["background-color"] = parts[len(parts)-1]
+			}
 		}
 	case "background-color":
 		props["background-color"] = value
@@ -987,6 +1356,40 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["font-family"] = value
 	case "font-weight":
 		props["font-weight"] = value
+	case "font":
+		// Font shorthand: [style] [variant] [weight] size[/line-height] family
+		// Examples: "12px Arial", "bold 16px sans-serif", "italic 12px/1.5 serif"
+		parts := strings.Fields(value)
+		if len(parts) >= 2 {
+			// Try to identify size and family
+			for i, part := range parts {
+				// Check if this part contains font-size (with optional line-height)
+				if strings.Contains(part, "px") || strings.Contains(part, "em") || strings.Contains(part, "pt") || strings.Contains(part, "%") {
+					// This is the size part
+					if idx := strings.Index(part, "/"); idx >= 0 {
+						props["font-size"] = part[:idx]
+						props["line-height"] = part[idx+1:]
+					} else {
+						props["font-size"] = part
+					}
+					// Everything after this is font-family
+					if i+1 < len(parts) {
+						props["font-family"] = strings.Join(parts[i+1:], ", ")
+					}
+					break
+				}
+				// Check for style
+				if part == "italic" || part == "oblique" || part == "normal" {
+					props["font-style"] = part
+				}
+				// Check for weight
+				if part == "bold" || part == "bolder" || part == "lighter" || part == "normal" {
+					props["font-weight"] = part
+				} else if _, err := strconv.Atoi(part); err == nil {
+					props["font-weight"] = part
+				}
+			}
+		}
 	case "margin-top":
 		props["margin-top"] = value
 	case "margin-right":
@@ -1208,6 +1611,52 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["break-before"] = value
 	case "break-after":
 		props["break-after"] = value
+	case "pointer-events":
+		// Valid values: auto, none, visiblePainted, visibleFill, visibleStroke, painted, fill, stroke, all
+		props["pointer-events"] = value
+	case "border-image":
+		// border-image: source slice / width / outset repeat
+		// Example: url(border.png) 30 round
+		props["border-image"] = value
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			lower := strings.ToLower(part)
+			if strings.HasPrefix(lower, "url(") || lower == "none" || lower == "linear-gradient" || strings.HasPrefix(lower, "radial-gradient") {
+				props["border-image-source"] = part
+			} else if strings.Contains(part, "/") {
+				// slice/width/outset
+				slices := strings.Split(part, "/")
+				if len(slices) >= 1 {
+					props["border-image-slice"] = slices[0]
+				}
+				if len(slices) >= 2 {
+					props["border-image-width"] = slices[1]
+				}
+				if len(slices) >= 3 {
+					props["border-image-outset"] = slices[2]
+				}
+			} else if lower == "stretch" || lower == "repeat" || lower == "round" || lower == "space" {
+				props["border-image-repeat"] = lower
+			}
+		}
+	case "border-image-source":
+		props["border-image-source"] = value
+	case "border-image-slice":
+		props["border-image-slice"] = value
+	case "border-image-width":
+		props["border-image-width"] = value
+	case "border-image-outset":
+		props["border-image-outset"] = value
+	case "border-image-repeat":
+		props["border-image-repeat"] = value
+	case "caret-color":
+		props["caret-color"] = value
+	case "cursor":
+		// cursor: auto, default, pointer, crosshair, move, text, wait, help, grab, grabbing, n-resize, s-resize, e-resize, w-resize, ne-resize, nw-resize, se-resize, sw-resize
+		props["cursor"] = value
+	case "empty-cells":
+		// Valid values: show, hide
+		props["empty-cells"] = value
 	case "transition":
 		parseTransitionShorthand(props, value)
 	case "transition-property":
@@ -1222,6 +1671,14 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["resize"] = value
 	case "pointer-events":
 		props["pointer-events"] = value
+	case "caption-side":
+		props["caption-side"] = value
+	case "empty-cells":
+		props["empty-cells"] = value
+	case "caret-color":
+		props["caret-color"] = value
+	case "appearance":
+		props["appearance"] = value
 	case "overscroll-behavior":
 		props["overscroll-behavior"] = value
 	case "overscroll-behavior-x":
@@ -1326,18 +1783,34 @@ func parseAnimationShorthand(props map[string]string, value string) {
 	for ; i < len(parts); i++ {
 		part := parts[i]
 		lower := strings.ToLower(part)
+		isTimeValue := strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")
 
-		if !setDuration && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) {
+		// Track how many time values we've seen to determine meaning:
+		// 1st duration-like → duration, 2nd → timing-function (rare), 3rd → delay
+		timeValueCount := 0
+		if setDuration {
+			timeValueCount++
+		}
+		if setTimingFunc {
+			timeValueCount++
+		}
+		if setDelay {
+			timeValueCount++
+		}
+
+		if !setDuration && isTimeValue && timeValueCount == 0 {
+			// First time value is always duration
 			props["animation-duration"] = part
 			setDuration = true
-		} else if !setTimingFunc && timingFuncs[lower] {
+		} else if !setTimingFunc && isTimeValue && timeValueCount == 1 {
+			// Second time value is timing-function (unusual but possible)
 			props["animation-timing-function"] = part
 			setTimingFunc = true
-		} else if !setDelay && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) && !setDuration {
-			// This would be a second duration — treat as delay
+		} else if !setDelay && isTimeValue && timeValueCount >= 2 {
+			// Third+ time value is delay
 			props["animation-delay"] = part
 			setDelay = true
-		} else if !setDelay && (strings.HasSuffix(part, "s") || strings.HasSuffix(part, "ms")) && setDuration && !setTimingFunc {
+		} else if !setTimingFunc && timingFuncs[lower] {
 			props["animation-timing-function"] = part
 			setTimingFunc = true
 		} else if !setIterCount && iterCounts[lower] {

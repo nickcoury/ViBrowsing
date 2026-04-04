@@ -74,7 +74,7 @@ func Parse(sheet string) []Rule {
 					i = mediaStart
 					continue
 				}
-				if strings.HasPrefix(atName, "keyframes") {
+				if strings.HasPrefix(atName, "keyframes") || strings.HasPrefix(atName, "-webkit-keyframes") {
 					// Parse @keyframes block
 					kf := parseKeyframes(sheet, i)
 					if kf != nil {
@@ -138,14 +138,6 @@ func parseKeyframes(sheet string, start int) *KeyframeRule {
 	for j < len(sheet) && sheet[j] != '{' && sheet[j] != ' ' && sheet[j] != '\t' {
 		j++
 	}
-	atName := strings.TrimSpace(sheet[start+1 : j])
-	// Extract keyframes name (skip "@keyframes" prefix)
-	name := strings.TrimPrefix(atName, "keyframes")
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil
-	}
-
 	// Find opening brace of keyframes block
 	for j < len(sheet) && sheet[j] != '{' {
 		j++
@@ -153,8 +145,19 @@ func parseKeyframes(sheet string, start int) *KeyframeRule {
 	if j >= len(sheet) {
 		return nil
 	}
-	j++ // skip '{'
 
+	// Extract keyframes name: content between "@keyframes" and "{"
+	// e.g. "@keyframes fade {" → name = "fade"
+	atName := strings.TrimSpace(sheet[start+1 : j])
+	// Remove "@keyframes" or "@-webkit-keyframes" prefix
+	name := strings.TrimPrefix(atName, "-webkit-")
+	name = strings.TrimPrefix(name, "keyframes")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+
+	j++ // skip '{'
 	kf := &KeyframeRule{
 		Name:     name,
 		Keyframes: make(map[float64]map[string]string),

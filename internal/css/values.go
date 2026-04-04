@@ -88,11 +88,56 @@ func ParseLength(s string) Length {
 // Returns the computed pixel value, using resolvePercent to resolve percentage values.
 func ParseCalc(s string, resolvePercent func(unit string) float64) (float64, error) {
 	// Strip "calc(" wrapper if present
-	s = strings.TrimSpace(s)
+	orig := strings.TrimSpace(s)
+	s = orig
+	// Reject inputs that look like function calls but aren't calc()
+	// These include min(), max(), notcalc(), etc.
+	if strings.HasPrefix(s, "min(") || strings.HasPrefix(s, "max(") {
+		return 0, fmt.Errorf("not a calc() expression")
+	}
+	// Reject any input that has a function-call style "(" but doesn't start with "calc("
+	if strings.Contains(s, "(") && !strings.HasPrefix(s, "calc(") {
+		return 0, fmt.Errorf("not a calc() expression")
+	}
 	if strings.HasPrefix(s, "calc(") {
-		s = s[4:]
-		if strings.HasSuffix(s, ")") {
-			s = s[:len(s)-1]
+		// calc() requires the full "calc(...)" form with closing paren
+		if !strings.HasSuffix(s, ")") {
+			return 0, fmt.Errorf("calc expression missing closing paren")
+		}
+		s = s[5:] // skip "calc("
+		s = s[:len(s)-1] // strip trailing ")"
+		// Check for unbalanced parens in the inner expression
+		depth := 0
+		for i := 0; i < len(s); i++ {
+			if s[i] == '(' {
+				depth++
+			} else if s[i] == ')' {
+				depth--
+				if depth < 0 {
+					return 0, fmt.Errorf("unbalanced parentheses in calc expression")
+				}
+			}
+		}
+		if depth > 0 {
+			return 0, fmt.Errorf("unclosed parentheses in calc expression")
+		}
+	}
+	if s == orig && !strings.HasPrefix(orig, "calc(") {
+		// If no calc() wrapper and no other prefix, try evaluating directly
+		// but first check if it looks like it has unbalanced parens
+		depth := 0
+		for i := 0; i < len(s); i++ {
+			if s[i] == '(' {
+				depth++
+			} else if s[i] == ')' {
+				depth--
+				if depth < 0 {
+					return 0, fmt.Errorf("unbalanced parentheses")
+				}
+			}
+		}
+		if depth > 0 {
+			return 0, fmt.Errorf("unclosed parentheses")
 		}
 	}
 	s = strings.TrimSpace(s)
@@ -102,7 +147,7 @@ func ParseCalc(s string, resolvePercent func(unit string) float64) (float64, err
 func evaluateCalc(s string, resolvePercent func(unit string) float64) (float64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, nil
+		return 0, fmt.Errorf("empty calc expression")
 	}
 
 	// Find the lowest-precedence operator at the top level
@@ -118,14 +163,42 @@ func evaluateCalc(s string, resolvePercent func(unit string) float64) (float64, 
 			parenDepth++
 		} else if c == ')' {
 			parenDepth--
+			if parenDepth < 0 {
+				// Unbalanced closing paren
+				return 0, fmt.Errorf("unbalanced parentheses in calc expression")
+			}
 		} else if parenDepth == 0 && (c == '+' || c == '-' || c == '*' || c == '/') {
-			// Skip +/- that's actually a sign, not an operator (must have space before)
-			if (c == '+' || c == '-') && (i == 0 || (s[i-1] != ' ' && s[i-1] != '\t')) {
-				continue
+			// Skip +/- that are unary signs, not binary operators.
+			// A +/- is binary only if preceded by an operand (number, ), %, etc.)
+			// e.g., "10px-5px" → binary (operand before -)
+			//       "10px + -5px" → + is binary (operand before space), - is unary
+			if c == '+' || c == '-' {
+				isBinary := false
+				// Scan left past whitespace to find if preceded by operand
+				for j := i - 1; j >= 0; j-- {
+					prev := s[j]
+					if prev == ' ' || prev == '\t' {
+						continue // skip whitespace
+					}
+					// Found non-whitespace
+					if (prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z') ||
+						(prev >= '0' && prev <= '9') || prev == ')' || prev == '%' || prev == '"' || prev == '\'' {
+						isBinary = true
+					}
+					break
+				}
+				if !isBinary {
+					continue
+				}
 			}
 			ops = append(ops, i)
 			opChars = append(opChars, c)
 		}
+	}
+
+	// Check for unclosed opening paren
+	if parenDepth > 0 {
+		return 0, fmt.Errorf("unbalanced parentheses in calc expression")
 	}
 
 	if len(ops) == 0 {
@@ -163,6 +236,11 @@ func evaluateCalc(s string, resolvePercent func(unit string) float64) (float64, 
 
 	leftStr := strings.TrimSpace(s[:lastOpIdx])
 	rightStr := strings.TrimSpace(s[lastOpIdx+1:])
+
+	// Handle unary signs on operands: if operand starts with +/-, preserve it
+	// as part of the value (ParseLength handles negative numbers correctly).
+	// We only strip a leading sign if it's NOT at the start of the operand
+	// (i.e., it's already a binary operator, not a unary sign).
 
 	leftVal, err := evaluateCalc(leftStr, resolvePercent)
 	if err != nil {
@@ -839,7 +917,7 @@ func ParseClamp(s string) (Length, error) {
 	if !strings.HasPrefix(s, "clamp(") || !strings.HasSuffix(s, ")") {
 		return Length{}, fmt.Errorf("not a clamp expression")
 	}
-	inner := s[7 : len(s)-1] // Remove "clamp(" and ")"
+	inner := s[6 : len(s)-1] // Remove "clamp(" and ")"
 
 	parts := splitMathFuncParts(inner)
 	if len(parts) != 3 {
@@ -937,14 +1015,14 @@ func splitMathFuncParts(inner string) []string {
 			depth--
 			current = append(current, c)
 		} else if c == ',' && depth == 0 {
-			parts = append(parts, string(current))
+			parts = append(parts, strings.TrimSpace(string(current)))
 			current = nil
 		} else {
 			current = append(current, c)
 		}
 	}
 	if len(current) > 0 {
-		parts = append(parts, string(current))
+		parts = append(parts, strings.TrimSpace(string(current)))
 	}
 	return parts
 }
@@ -1335,13 +1413,15 @@ func ParseCounters(s string) Counters {
 	if !strings.HasPrefix(s, "counters(") || !strings.HasSuffix(s, ")") {
 		return Counters{}
 	}
-	inner := s[10 : len(s)-1] // Remove "counters(" and ")"
+	inner := s[9 : len(s)-1] // Remove "counters(" and ")"
 	parts := splitFunctionParts(inner)
 	if len(parts) < 2 {
 		return Counters{}
 	}
 	name := strings.TrimSpace(parts[0])
 	separator := strings.TrimSpace(parts[1])
+	// Strip surrounding quotes if present (CSS string literals)
+	separator = stripCSSStringQuotes(separator)
 	style := CounterStyleDecimal
 	if len(parts) >= 3 {
 		style = parseCounterStyle(strings.TrimSpace(parts[2]))
@@ -1429,28 +1509,55 @@ func parseCounterStyle(s string) CounterStyle {
 	}
 }
 
-// splitFunctionParts splits a function's inner arguments, handling nested parentheses.
+// stripCSSStringQuotes removes surrounding single or double quotes from a CSS string literal.
+func stripCSSStringQuotes(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
+}
+
+// splitFunctionParts splits a function's inner arguments, handling nested parentheses and quoted strings.
+// Each part is individually trimmed of surrounding whitespace.
 func splitFunctionParts(inner string) []string {
 	var parts []string
 	var current []byte
 	depth := 0
+	inQuote := false
+	quoteChar := byte(0)
 	for i := 0; i < len(inner); i++ {
 		c := inner[i]
-		if c == '(' {
+		// Enter quote
+		if !inQuote && (c == '"' || c == '\'') {
+			inQuote = true
+			quoteChar = c
+			current = append(current, c)
+		} else if inQuote && c == quoteChar {
+			// Exit quote
+			inQuote = false
+			quoteChar = 0
+			current = append(current, c)
+		} else if c == '(' && !inQuote {
 			depth++
 			current = append(current, c)
-		} else if c == ')' {
+		} else if c == ')' && !inQuote {
 			depth--
+			if depth < 0 {
+				depth = 0
+			}
 			current = append(current, c)
-		} else if c == ',' && depth == 0 {
-			parts = append(parts, string(current))
+		} else if c == ',' && depth == 0 && !inQuote {
+			parts = append(parts, strings.TrimSpace(string(current)))
 			current = nil
 		} else {
 			current = append(current, c)
 		}
 	}
 	if len(current) > 0 {
-		parts = append(parts, string(current))
+		parts = append(parts, strings.TrimSpace(string(current)))
 	}
 	return parts
 }
