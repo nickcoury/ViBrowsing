@@ -11,7 +11,7 @@
 ## 🟡 High (Layout/Rendering)
 
 - [x] ~~Implement CSS box model properly~~ (2026-04-03 sprint) — TotalWidth/TotalHeight now use Box fields; canvas draws margin/background/padding/border in correct order with proper geometry
-- [ ] **Implement flexbox layout** — HN stories and most modern UIs use flexbox. Need to support `display: flex`, `flex-direction`, `justify-content`, `align-items`, `gap`
+- [x] ~~Implement flexbox layout~~ (2026-04-03 sprint) — added FlexBox type, flex-direction (row/column/reverse), justify-content, align-items, align-self, flex-grow, flex-basis, gap CSS properties
 - [x] ~~Implement inline layout~~ (2026-04-03 sprint) — text wraps at container width; white-space:normal collapses whitespace, pre/pre-wrap preserves it; text boxes inherit parent style including white-space; explicit newline handling in pre mode
 - [ ] **Implement float** — `float: left/right` removes element from flow, surrounding content wraps around it
 - [ ] **Implement positioned layout** — `position: absolute/relative/fixed` with `top/left/right/bottom` offsets

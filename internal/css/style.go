@@ -45,6 +45,11 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"left":           "auto",
 		"float":          "none",
 		"z-index":        "auto",
+		"flex-direction": "row",
+		"justify-content": "flex-start",
+		"align-items":    "stretch",
+		"flex-wrap":     "nowrap",
+		"gap":           "0",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -274,5 +279,23 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["float"] = value
 	case "z-index":
 		props["z-index"] = value
+	case "flex-direction":
+		props["flex-direction"] = value
+	case "justify-content":
+		props["justify-content"] = value
+	case "align-items":
+		props["align-items"] = value
+	case "align-self":
+		props["align-self"] = value
+	case "flex-grow":
+		props["flex-grow"] = value
+	case "flex-shrink":
+		props["flex-shrink"] = value
+	case "flex-basis":
+		props["flex-basis"] = value
+	case "flex-wrap":
+		props["flex-wrap"] = value
+	case "gap":
+		props["gap"] = value
 	}
 }
