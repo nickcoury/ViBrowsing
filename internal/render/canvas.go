@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
+	"github.com/nickcoury/ViBrowsing/internal/html"
 	"github.com/nickcoury/ViBrowsing/internal/layout"
 )
 
@@ -312,6 +313,11 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Text content (only if not hidden)
 	if !isHidden && box.Type == layout.TextBox && box.Node != nil {
 		c.DrawText(box)
+	}
+
+	// Image content
+	if !isHidden && box.Type == layout.ImageBox && box.Node != nil {
+		c.DrawImage(box)
 	}
 
 	// Children (only if not hidden)
@@ -623,6 +629,125 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		}
 		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
 		currentX += cw + extraWord
+	}
+}
+
+// DrawImage renders an img element. Shows alt text if image unavailable/loading.
+func (c *Canvas) DrawImage(box *layout.Box) {
+	if box.Node == nil || box.Node.Type != html.NodeElement {
+		return
+	}
+
+	src := box.Node.GetAttribute("src")
+	alt := box.Node.GetAttribute("alt")
+
+	// Default dimensions
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+	if w <= 0 {
+		w = 150
+		box.ContentW = 150
+	}
+	if h <= 0 {
+		h = 150
+		box.ContentH = 150
+	}
+
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+
+	if src == "" {
+		// No src — show alt text in a placeholder box
+		c.FillRect(x, y, w, h, css.Color{R: 240, G: 240, B: 240, A: 255})
+		c.DrawBorder(x, y, w, h, 1, css.Color{R: 200, G: 200, B: 200, A: 255})
+		// Draw alt text if available
+		if alt != "" {
+			// Render alt text as simple colored rects (no actual font rendering)
+			fontSize := 12.0
+			charWidth := fontSize * 0.6
+			maxChars := w / int(charWidth)
+			if maxChars > len(alt) {
+				maxChars = len(alt)
+			}
+			textColor := css.Color{R: 100, G: 100, B: 100, A: 255}
+			for i := 0; i < maxChars; i++ {
+				c.FillRect(x+int(float64(i)*charWidth), y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
+			}
+		}
+		return
+	}
+
+	// Attempt to load and decode the image
+	img, err := c.loadImage(src)
+	if err != nil || img == nil {
+		// Failed to load — show alt or placeholder
+		c.FillRect(x, y, w, h, css.Color{R: 240, G: 240, B: 240, A: 255})
+		c.DrawBorder(x, y, w, h, 1, css.Color{R: 200, G: 200, B: 200, A: 255})
+		// Draw a broken-image icon (simple X)
+		lineColor := css.Color{R: 180, G: 180, B: 180, A: 255}
+		c.FillRect(x+w/4, y+h/4, w/2, 1, lineColor)
+		c.FillRect(x+w/4, y+h*3/4, w/2, 1, lineColor)
+		c.FillRect(x+w/4, y+h/4, 1, h/2, lineColor)
+		c.FillRect(x+w*3/4, y+h/4, 1, h/2, lineColor)
+		return
+	}
+
+	// Draw the image, scaled to fit the content box
+	c.drawImageScaled(img, x, y, w, h)
+}
+
+// loadImage fetches and decodes an image from a URL.
+// Returns the image or an error. Currently a stub — returns nil.
+func (c *Canvas) loadImage(src string) (image.Image, error) {
+	// TODO: implement actual image fetching and decoding
+	// For now, return nil so alt text / broken image icon is shown
+	return nil, nil
+}
+
+// drawImageScaled draws an image scaled to fit within (x, y, w, h).
+func (c *Canvas) drawImageScaled(img image.Image, x, y, w, h int) {
+	imgW := img.Bounds().Dx()
+	imgH := img.Bounds().Dy()
+	if imgW == 0 || imgH == 0 {
+		return
+	}
+
+	// Scale to fit within the box while preserving aspect ratio
+	scaleX := float64(w) / float64(imgW)
+	scaleY := float64(h) / float64(imgH)
+	scale := scaleX
+	if scaleY < scale {
+		scale = scaleY
+	}
+
+	scaledW := int(float64(imgW) * scale)
+	scaledH := int(float64(imgH) * scale)
+
+	// Center in the box
+	drawX := x + (w-scaledW)/2
+	drawY := y + (h-scaledH)/2
+
+	// Nearest-neighbor scaling by pixel copying
+	for py := 0; py < scaledH; py++ {
+		srcY := int(float64(py) / scale)
+		if srcY >= imgH {
+			srcY = imgH - 1
+		}
+		for px := 0; px < scaledW; px++ {
+			srcX := int(float64(px) / scale)
+			if srcX >= imgW {
+				srcX = imgW - 1
+			}
+			r, g, b, a := img.At(srcX, srcY).RGBA()
+			// Convert from 16-bit to 8-bit
+			col := color.RGBA{
+				R: uint8(r >> 8),
+				G: uint8(g >> 8),
+				B: uint8(b >> 8),
+				A: uint8(a >> 8),
+			}
+			c.Pixels.Set(drawX+px, drawY+py, col)
+		}
 	}
 }
 

@@ -670,9 +670,29 @@ func layoutChild(child *Box, parent *Box, ctx *LayoutContext) {
 		layoutFlexContainer(child, ctx)
 	case PositionedBox:
 		layoutPositionedChild(child, ctx)
+	case ImageBox:
+		layoutImageChild(child, ctx)
 	default:
 		layoutInlineChild(child, parent, ctx)
 	}
+}
+
+// layoutImageChild handles layout for img elements.
+func layoutImageChild(box *Box, ctx *LayoutContext) {
+	if box.Node == nil {
+		return
+	}
+
+	width := computeWidth(box, ctx.Width)
+	height := css.ParseLength(box.Style["height"]).Value
+
+	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+	box.ContentY = ctx.Y + css.ParseLength(box.Style["margin-top"]).Value
+	box.ContentW = width
+	box.ContentH = height
+
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	ctx.Y += box.ContentH + marginBottom
 }
 
 // layoutPositionedChild handles position:absolute/relative/fixed layout.

@@ -17,6 +17,7 @@ const (
 	TextBox
 	FlexBox
 	PositionedBox
+	ImageBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -195,6 +196,8 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = BlockBox
 	case "span", "a", "strong", "em", "b", "i", "code", "small":
 		box.Type = InlineBox
+	case "img":
+		box.Type = ImageBox
 	}
 
 	// Flex container
@@ -222,6 +225,16 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	box.BorderRight = borderWidth
 	box.BorderBottom = borderWidth
 	box.BorderLeft = borderWidth
+
+	// Image element default size: if no width/height specified, use 150x150
+	if tagName == "img" {
+		if _, ok := style["width"]; !ok {
+			box.Style["width"] = "150"
+		}
+		if _, ok := style["height"]; !ok {
+			box.Style["height"] = "150"
+		}
+	}
 
 	// Recurse for children (pass our computed style as parent style)
 	for _, child := range node.Children {
