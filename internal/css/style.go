@@ -59,6 +59,11 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"flex-wrap":       "nowrap",
 		"gap":             "0",
 		"border-radius":   "0",
+		"background-color": "transparent",
+		"background-image": "none",
+		"background-repeat": "repeat",
+		"background-position": "0 0",
+		"background-size":  "auto auto",
 		"outline-width":   "0",
 		"outline-style":   "none",
 		"outline-color":   "black",
@@ -216,10 +221,45 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["display"] = value
 	case "color":
 		props["color"] = value
-	case "background-color":
-		props["background"] = value
 	case "background":
-		props["background"] = value
+		// background shorthand: [color] [image] [repeat] [position] [/ size]
+		// Parse space-separated values into component properties
+		// Store color in "background" (backward compat for canvas.go)
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			lower := strings.ToLower(part)
+			if strings.HasPrefix(lower, "url(") {
+				props["background-image"] = part
+				props["background"] = value // keep full shorthand too
+			} else if part == "no-repeat" || part == "repeat" || part == "repeat-x" || part == "repeat-y" || part == "space" || part == "round" {
+				props["background-repeat"] = part
+			} else if part == "left" || part == "right" || part == "top" || part == "bottom" || part == "center" {
+				props["background-position"] = part
+			} else if strings.Contains(part, "/") {
+				posParts := strings.Split(part, "/")
+				if len(posParts) == 2 {
+					props["background-position"] = strings.TrimSpace(posParts[0])
+					props["background-size"] = strings.TrimSpace(posParts[1])
+				}
+			} else if lower == "transparent" || lower == "inherit" {
+				props["background"] = part
+			} else if ParseColor(part).A > 0 {
+				props["background"] = part
+			}
+		}
+		// If no specific part matched, store the whole value in background
+		if props["background"] == "" {
+			props["background"] = value
+		}
+	case "background-color":
+		props["background-color"] = value
+		props["background"] = value // sync for canvas.go
+	case "background-repeat":
+		props["background-repeat"] = value
+	case "background-position":
+		props["background-position"] = value
+	case "background-size":
+		props["background-size"] = value
 	case "font-size":
 		props["font-size"] = value
 	case "font-family":
