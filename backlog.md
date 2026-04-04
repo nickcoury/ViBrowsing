@@ -33,17 +33,17 @@
 - [ ] **Implement `<template>`** — parse but don't render template content
 
 ### CSS Properties
-- [ ] **Implement CSS `color` property** — foreground text color for all elements. Need RGB, RGBA, hex, HSL, HSLA, named colors
-- [ ] **Implement CSS `background-color`** — verify hex (`#fff`, `#ffffff`) and rgb() work. Also rgba(), hsl(), hsla(), named colors
+- [x] ~~Implement CSS `color` property~~ (2026-04-04 sprint) — ParseColor now supports RGB, RGBA, HSL, HSLA, hex (#RGB, #RRGGBB), and named colors; rgba() alpha accepts 0-1 and percentage; fixed RGBA() to properly expand 8-bit to 16-bit
+- [x] ~~Implement CSS `background-color`~~ (2026-04-04 sprint) — same ParseColor parser used for all color values including hsl()/hsla(); ParseFloat255 fixed to cap at 255 not 1
 - [ ] **Implement CSS `background-image`, `background-repeat`, `background-position`, `background-size`** — for gradients and images
 - [ ] **Implement CSS `background` shorthand** — `background: #fff url(img.png) no-repeat center top`
 - [ ] **Implement CSS `border-radius`** — rounded corners on boxes, including per-corner (`border-radius: 10px 5px 10px 5px`)
 - [ ] **Implement CSS `box-shadow`** — drop shadows: `box-shadow: 2px 2px 4px rgba(0,0,0,0.5)`
-- [ ] **Implement CSS `text-align`** — left/center/right/justify
-- [ ] **Implement CSS `font-weight`, `font-style`, `text-decoration`** — bold, italic, underline, strikethrough, overline
-- [ ] **Implement CSS `line-height`** — proper text spacing: unitless, px, em, %
+- [x] ~~Implement CSS `text-align`~~ (2026-04-04 sprint) — stored in style props; DrawText respects alignment offset
+- [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration not yet rendered (storage only)
+- [x] ~~Implement CSS `line-height`~~ (2026-04-04 sprint) — already worked; ParseLength handles unitless values
 - [ ] **Implement CSS `vertical-align`** — for inline and table cells: top/middle/bottom/baseline/sub/super
-- [ ] **Implement CSS `opacity`** — transparency on elements (0-1, 0%-100%)
+- [x] ~~Implement CSS `opacity`~~ (2026-04-04 sprint) — opacity value stored in style; DrawBox applies applyOpacity() to background and border colors; opacity 0-1 range clamped
 - [ ] **Implement CSS `transform`** — rotate, scale, translate (2D transforms)
 - [ ] **Implement CSS `@media` queries** — responsive design breakpoints
 - [ ] **Implement CSS `cursor`** — show appropriate cursor on interactive elements (pointer, text, wait, etc)

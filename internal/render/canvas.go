@@ -124,6 +124,22 @@ func (c *Canvas) FillRect(x, y, w, h int, col color.Color) {
 	}
 }
 
+// applyOpacity blends a CSS color with an opacity factor (0-1).
+func applyOpacity(col css.Color, opacity float64) css.Color {
+	if opacity <= 0 {
+		return css.Color{R: 0, G: 0, B: 0, A: 0}
+	}
+	if opacity >= 1 {
+		return col
+	}
+	// col is already a css.Color, which stores 8-bit values
+	r := uint8(float64(col.R) * opacity)
+	g := uint8(float64(col.G) * opacity)
+	b := uint8(float64(col.B) * opacity)
+	a := uint8(float64(col.A) * opacity)
+	return css.Color{R: r, G: g, B: b, A: a}
+}
+
 // DrawBox renders a layout box and its children.
 func (c *Canvas) DrawBox(box *layout.Box) {
 	if box == nil {
@@ -145,8 +161,25 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		contentH = 600
 	}
 
+	// Opacity
+	opacity := 1.0
+	if op, ok := box.Style["opacity"]; ok {
+		if v, err := strconv.ParseFloat(op, 64); err == nil {
+			opacity = v
+			if v < 0 {
+				opacity = 0
+			}
+			if v > 1 {
+				opacity = 1
+			}
+		}
+	}
+
 	// Background (margin box area)
 	bgColor := css.ParseColor(box.Style["background"])
+	if opacity < 1 {
+		bgColor = applyOpacity(bgColor, opacity)
+	}
 	marginLeft := int(css.ParseLength(box.Style["margin-left"]).Value)
 	marginTop := int(css.ParseLength(box.Style["margin-top"]).Value)
 	marginRight := int(css.ParseLength(box.Style["margin-right"]).Value)
@@ -180,6 +213,9 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		borderColor = css.Color{R: 0, G: 0, B: 0, A: 0}
 	}
 	if borderWidth > 0 {
+		if opacity < 1 {
+			borderColor = applyOpacity(borderColor, opacity)
+		}
 		c.DrawBorder(contentX, contentY, contentW, contentH, borderWidth, borderColor)
 	}
 

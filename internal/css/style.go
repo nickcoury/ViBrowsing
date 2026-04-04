@@ -12,44 +12,52 @@ type Specificity struct {
 func ComputeStyle(tagName string, class string, id string, inlineStyles []Declaration, rules []Rule) map[string]string {
 	// Start with user-agent defaults
 	props := map[string]string{
-		"display":        "inline",
-		"visibility":     "visible",
-		"color":          "black",
-		"background":     "transparent",
-		"font-size":      "16px",
-		"font-family":    "serif",
-		"font-weight":    "normal",
-		"margin-top":     "0",
-		"margin-right":   "0",
-		"margin-bottom":  "0",
-		"margin-left":    "0",
-		"padding-top":    "0",
-		"padding-right":  "0",
-		"padding-bottom": "0",
-		"padding-left":   "0",
+		"display":         "inline",
+		"visibility":      "visible",
+		"color":           "black",
+		"background":      "transparent",
+		"font-size":       "16px",
+		"font-family":     "serif",
+		"font-weight":     "normal",
+		"font-style":      "normal",
+		"text-decoration": "none",
+		"margin-top":      "0",
+		"margin-right":    "0",
+		"margin-bottom":   "0",
+		"margin-left":     "0",
+		"padding-top":     "0",
+		"padding-right":   "0",
+		"padding-bottom":  "0",
+		"padding-left":    "0",
 		"border-width":    "0",
 		"border-style":   "none",
 		"border-color":   "black",
-		"width":          "auto",
-		"height":         "auto",
-		"text-align":     "left",
-		"line-height":    "1.2",
-		"white-space":    "normal",
-		"overflow":       "visible",
-		"overflow-x":     "visible",
-		"overflow-y":     "visible",
-		"position":       "static",
-		"top":            "auto",
-		"right":          "auto",
-		"bottom":         "auto",
-		"left":           "auto",
-		"float":          "none",
-		"z-index":        "auto",
-		"flex-direction": "row",
+		"width":           "auto",
+		"height":          "auto",
+		"text-align":      "left",
+		"text-indent":     "0",
+		"line-height":     "1.2",
+		"letter-spacing":  "0",
+		"word-spacing":    "0",
+		"text-transform":  "none",
+		"vertical-align":  "baseline",
+		"opacity":         "1",
+		"white-space":     "normal",
+		"overflow":        "visible",
+		"overflow-x":      "visible",
+		"overflow-y":      "visible",
+		"position":        "static",
+		"top":             "auto",
+		"right":           "auto",
+		"bottom":          "auto",
+		"left":            "auto",
+		"float":           "none",
+		"z-index":         "auto",
+		"flex-direction":  "row",
 		"justify-content": "flex-start",
-		"align-items":    "stretch",
-		"flex-wrap":     "nowrap",
-		"gap":           "0",
+		"align-items":     "stretch",
+		"flex-wrap":       "nowrap",
+		"gap":             "0",
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -249,16 +257,22 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["width"] = value
 	case "height":
 		props["height"] = value
-	case "text-align":
-		props["text-align"] = value
-	case "line-height":
-		props["line-height"] = value
-	case "font-style":
-		props["font-style"] = value
 	case "visibility":
 		props["visibility"] = value
 	case "white-space":
 		props["white-space"] = value
+	case "letter-spacing":
+		props["letter-spacing"] = value
+	case "word-spacing":
+		props["word-spacing"] = value
+	case "text-indent":
+		props["text-indent"] = value
+	case "text-transform":
+		props["text-transform"] = value
+	case "opacity":
+		props["opacity"] = value
+	case "vertical-align":
+		props["vertical-align"] = value
 	case "overflow":
 		props["overflow"] = value
 	case "overflow-x":

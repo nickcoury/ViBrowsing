@@ -2,6 +2,7 @@ package css
 
 import (
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -16,10 +17,10 @@ type Color struct {
 
 // RGBA implements color.Color (8-bit per channel expanded to 16-bit big-endian per channel).
 func (c Color) RGBA() (r, g, b, a uint32) {
-	return uint32(c.R)<<16 | uint32(c.R)<<8 | uint32(c.R),
-		uint32(c.G)<<16 | uint32(c.G)<<8 | uint32(c.G),
-		uint32(c.B)<<16 | uint32(c.B)<<8 | uint32(c.B),
-		uint32(c.A)<<16 | uint32(c.A)<<8 | uint32(c.A)
+	return uint32(c.R)<<8 | uint32(c.R),
+		uint32(c.G)<<8 | uint32(c.G),
+		uint32(c.B)<<8 | uint32(c.B),
+		uint32(c.A)<<8 | uint32(c.A)
 }
 
 // LengthUnit represents a CSS length unit.
@@ -147,6 +148,27 @@ func ParseColor(s string) Color {
 		}
 	}
 
+	// hsl(h, s%, l%)
+	if strings.HasPrefix(s, "hsl(") && strings.HasSuffix(s, ")") {
+		inner := s[4 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		if len(parts) == 3 {
+			r, g, b := hslToRgb(parts[0], parts[1], parts[2])
+			return Color{r, g, b, 255}
+		}
+	}
+
+	// hsla(h, s%, l%, a)
+	if strings.HasPrefix(s, "hsla(") && strings.HasSuffix(s, ")") {
+		inner := s[5 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		if len(parts) == 4 {
+			r, g, b := hslToRgb(parts[0], parts[1], parts[2])
+			a := parseFloatAlpha(parts[3])
+			return Color{r, g, b, a}
+		}
+	}
+
 	// rgba(r, g, b, a)
 	if strings.HasPrefix(s, "rgba(") && strings.HasSuffix(s, ")") {
 		inner := s[5 : len(s)-1]
@@ -155,7 +177,7 @@ func ParseColor(s string) Color {
 			r := parseUint8(parts[0])
 			g := parseUint8(parts[1])
 			b := parseUint8(parts[2])
-			a := parseFloat255(parts[3])
+			a := parseFloatAlpha(parts[3])
 			return Color{r, g, b, a}
 		}
 	}
@@ -182,6 +204,100 @@ func parseUint8(s string) uint8 {
 
 func parseFloat255(s string) uint8 {
 	s = strings.TrimSpace(s)
+	v, _ := strconv.ParseFloat(s, 64)
+	if v < 0 {
+		v = 0
+	}
+	if v > 255 {
+		v = 255
+	}
+	return uint8(v)
+}
+
+// hslToRgb converts HSL values (h in degrees, s and l in percentages) to RGB.
+func hslToRgb(hStr, sStr, lStr string) (r, g, b uint8) {
+	h, _ := strconv.ParseFloat(strings.TrimSpace(hStr), 64)
+	sPct, _ := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(sStr, "%")), 64)
+	lPct, _ := strconv.ParseFloat(strings.TrimSpace(strings.TrimSuffix(lStr, "%")), 64)
+	s := sPct / 100
+	l := lPct / 100
+
+	// Normalize hue to [0, 360)
+	h = math.Mod(h, 360)
+	if h < 0 {
+		h += 360
+	}
+
+	if s == 0 {
+		v := uint8(l * 255)
+		return v, v, v
+	}
+
+	var p, q float64
+	if l < 0.5 {
+		q = l * (1 + s)
+	} else {
+		q = l + s - l*s
+	}
+	p = 2*l - q
+	hh := h / 360
+
+	hue2 := func(n float64) float64 {
+		if n < 0 {
+			n++
+		}
+		if n < 1.0/6 {
+			return p + (q-p)*6*n
+		}
+		if n < 1.0/2 {
+			return q
+		}
+		if n < 2.0/3 {
+			return p + (q-p)*(2.0/3-n)*6
+		}
+		return p
+	}
+
+	rr := hue2(hh + 1.0/3)
+	gg := hue2(hh)
+	bb := hue2(hh - 1.0/3)
+
+	if rr < 0 {
+		rr = 0
+	}
+	if rr > 1 {
+		rr = 1
+	}
+	if gg < 0 {
+		gg = 0
+	}
+	if gg > 1 {
+		gg = 1
+	}
+	if bb < 0 {
+		bb = 0
+	}
+	if bb > 1 {
+		bb = 1
+	}
+
+	return uint8(rr * 255), uint8(gg * 255), uint8(bb * 255)
+}
+
+func parseFloatAlpha(s string) uint8 {
+	s = strings.TrimSpace(s)
+	// Handle percentage: "50%" -> 0.5
+	if strings.HasSuffix(s, "%") {
+		pct, _ := strconv.ParseFloat(strings.TrimSuffix(s, "%"), 64)
+		if pct < 0 {
+			pct = 0
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		return uint8(pct * 255 / 100)
+	}
+	// Handle 0-1 float
 	v, _ := strconv.ParseFloat(s, 64)
 	if v < 0 {
 		v = 0
