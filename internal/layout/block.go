@@ -672,6 +672,8 @@ func layoutChild(child *Box, parent *Box, ctx *LayoutContext) {
 		layoutPositionedChild(child, ctx)
 	case ImageBox:
 		layoutImageChild(child, ctx)
+	case ListItemBox:
+		layoutListItemChild(child, ctx)
 	default:
 		layoutInlineChild(child, parent, ctx)
 	}
@@ -693,6 +695,54 @@ func layoutImageChild(box *Box, ctx *LayoutContext) {
 
 	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
 	ctx.Y += box.ContentH + marginBottom
+}
+
+// layoutListItemChild handles layout for li elements with list markers.
+func layoutListItemChild(box *Box, ctx *LayoutContext) {
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+
+	// Marker width (space for bullet/number)
+	markerWidth := 20.0
+	listStyleType := box.Style["list-style-type"]
+
+	// Determine if we're in an ordered list
+	parentIsOl := false
+	if box.Parent != nil && box.Parent.Node != nil && box.Parent.Node.TagName == "ol" {
+		parentIsOl = true
+	}
+
+	// Simple marker rendering: draw bullet/number before content
+	box.ContentX = ctx.X + marginLeft + markerWidth
+	box.ContentY = ctx.Y + marginTop
+	box.ContentW = computeWidth(box, ctx.Width) - markerWidth
+
+	// Compute height from children
+	childCtx := &LayoutContext{
+		Width:         box.ContentW,
+		X:             box.ContentX,
+		Y:             box.ContentY,
+		FloatLeftEdge: ctx.FloatLeftEdge,
+		FloatRightEdge: ctx.FloatRightEdge,
+		FloatBottom:   ctx.FloatBottom,
+	}
+	layoutChildren(box, childCtx)
+
+	box.ContentH = computeHeight(box, childCtx)
+
+	// Store marker info in style for rendering
+	box.Style["_marker"] = listStyleType
+	if parentIsOl {
+		box.Style["_marker"] = "ol:" + listStyleType
+	}
+	box.Style["_markerWidth"] = strconv.FormatFloat(markerWidth, 'f', 0, 64)
+
+	nextY := box.ContentY + box.ContentH + marginBottom
+	if ctx.FloatBottom > nextY {
+		nextY = ctx.FloatBottom
+	}
+	ctx.Y = nextY
 }
 
 // layoutPositionedChild handles position:absolute/relative/fixed layout.

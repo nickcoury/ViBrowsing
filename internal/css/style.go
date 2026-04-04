@@ -64,6 +64,9 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"background-repeat": "repeat",
 		"background-position": "0 0",
 		"background-size":  "auto auto",
+		"list-style-type":  "disc",
+		"list-style-position": "outside",
+		"list-style-image": "none",
 		"outline-width":   "0",
 		"outline-style":   "none",
 		"outline-color":   "black",
@@ -260,6 +263,24 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["background-position"] = value
 	case "background-size":
 		props["background-size"] = value
+	case "list-style-type":
+		props["list-style-type"] = value
+	case "list-style-position":
+		props["list-style-position"] = value
+	case "list-style-image":
+		props["list-style-image"] = value
+	case "list-style":
+		// shorthand: type position image
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			if part == "inside" || part == "outside" {
+				props["list-style-position"] = part
+			} else if strings.HasPrefix(part, "url(") {
+				props["list-style-image"] = part
+			} else if part != "" {
+				props["list-style-type"] = part
+			}
+		}
 	case "font-size":
 		props["font-size"] = value
 	case "font-family":

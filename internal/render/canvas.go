@@ -327,6 +327,11 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		copy(children, box.Children)
 		c.drawChildrenSorted(children)
 	}
+
+	// Draw list marker if this is a list item
+	if box.Type == layout.ListItemBox {
+		c.DrawListMarker(box)
+	}
 }
 
 // drawChildrenSorted draws children in z-index order, then paint order.
@@ -759,6 +764,57 @@ func (c *Canvas) SavePNG(path string) error {
 	}
 	defer f.Close()
 	return png.Encode(f, c.Pixels)
+}
+
+// DrawListMarker renders the list marker (bullet or number) for a list item.
+func (c *Canvas) DrawListMarker(box *layout.Box) {
+	marker := box.Style["_marker"]
+	markerWidthStr := box.Style["_markerWidth"]
+	markerWidth := 20.0
+	if markerWidthStr != "" {
+		if w, err := strconv.ParseFloat(markerWidthStr, 64); err == nil {
+			markerWidth = w
+		}
+	}
+
+	x := int(box.ContentX - markerWidth)
+	y := int(box.ContentY)
+	h := int(box.ContentH)
+	if h <= 0 {
+		h = 20
+	}
+
+	textColor := css.ParseColor(box.Style["color"])
+
+	// Draw marker based on type
+	switch marker {
+	case "none":
+		// No marker
+	case "square", "circle", "disc", "":
+		// Bullet point — filled circle
+		r := int(float64(h) * 0.3)
+		if r < 3 {
+			r = 3
+		}
+		c.drawFilledCorner(x+int(markerWidth)/2, y+h/2, r, textColor, 1)
+	case "decimal", "ol:decimal":
+		// Number — draw simple number representation
+		fontSize := 14.0
+		charWidth := fontSize * 0.6
+		c.FillRect(x+2, y+h/4, int(charWidth*3), int(fontSize), textColor)
+	case "lower-alpha", "upper-alpha":
+		// Letter
+		fontSize := 14.0
+		charWidth := fontSize * 0.6
+		c.FillRect(x+2, y+h/4, int(charWidth), int(fontSize), textColor)
+	default:
+		// Default bullet
+		r := int(float64(h) * 0.25)
+		if r < 3 {
+			r = 3
+		}
+		c.drawFilledCorner(x+int(markerWidth)/2, y+h/2, r, textColor, 1)
+	}
 }
 
 // ToImage returns the underlying *image.RGBA.

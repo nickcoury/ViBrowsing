@@ -18,12 +18,14 @@ const (
 	FlexBox
 	PositionedBox
 	ImageBox
+	ListItemBox
 )
 
 // Box represents a CSS box in the layout tree.
 type Box struct {
 	Type       BoxType
 	Node       *html.Node // source DOM node
+	Parent     *Box       // parent box in layout tree
 
 	// Content area
 	ContentX, ContentY float64
@@ -189,7 +191,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	// Default block elements
 	switch tagName {
 	case "div", "p", "h1", "h2", "h3", "h4", "h5", "h6",
-		"ul", "ol", "li", "table", "tr", "form", "pre",
+		"ul", "ol", "table", "tr", "form", "pre",
 		"blockquote", "address", "article", "aside",
 		"footer", "header", "main", "nav", "section",
 		"figure", "figcaption":
@@ -198,6 +200,8 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = InlineBox
 	case "img":
 		box.Type = ImageBox
+	case "li":
+		box.Type = ListItemBox
 	}
 
 	// Flex container
@@ -240,6 +244,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	for _, child := range node.Children {
 		childBox := buildBox(child, rules, depth+1, style)
 		if childBox != nil {
+			childBox.Parent = box
 			box.Children = append(box.Children, childBox)
 		}
 	}
