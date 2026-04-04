@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Test 4: Box Model</title>
+<style>
+body { background: white; margin: 20px; font-family: sans-serif; }
+.box {
+  background: #3498db;
+  color: white;
+  padding: 30px;
+  margin: 20px;
+  border: 5px solid #2c3e50;
+}
+.outer {
+  background: #e74c3c;
+  padding: 10px;
+  margin: 10px;
+  border: 3px solid #c0392b;
+}
+.inner {
+  background: #27ae60;
+  padding: 20px;
+  margin: 15px;
+  border: 3px solid #1e8449;
+}
+p { margin: 5px 0; }
+</style>
+</head>
+<body>
+<h1>Test Page 4: Box Model</h1>
+<p>The blue box below should have: margin (outside), border (edge), padding (inside), content.</p>
+<div class="box">
+  This box has 30px padding, 5px border, 20px margin.
+</div>
+<div class="outer">
+  <p>Outer box</p>
+  <div class="inner">
+    <p>Inner box nested inside outer box. Margin collapsing should merge vertical margins.</p>
+  </div>
+</div>
+</body>
+</html>

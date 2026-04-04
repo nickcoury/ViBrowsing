@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Test 3: Nested Elements</title>
+<style>
+body { background: white; margin: 20px; font-family: serif; font-size: 16px; }
+div { padding: 10px; margin: 5px 0; }
+.a { background: #e8f4f8; border-left: 4px solid #3498db; }
+.b { background: #fef9e7; border-left: 4px solid #f39c12; }
+.c { background: #f8f9fa; border-left: 4px solid #95a5a6; }
+p { margin: 5px 0; }
+</style>
+</head>
+<body>
+<h1>Test Page 3: Nested Elements</h1>
+<div class="a">
+  <p>Level 1 div with blue border</p>
+  <div class="b">
+    <p>Level 2 div with yellow border</p>
+    <div class="c">
+      <p>Level 3 div with gray border. Nested divs should stack vertically and indent.</p>
+    </div>
+    <p>Back to level 2</p>
+  </div>
+</div>
+<div class="a">
+  <p>Another level 1 div</p>
+</div>
+</body>
+</html>
