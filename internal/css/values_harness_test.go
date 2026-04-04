@@ -304,25 +304,23 @@ func TestParseCalc(t *testing.T) {
 		name      string
 		input     string
 		wantValue float64
-		wantOp    string
 	}{
-		{"simple add", "calc(10px + 5px)", 15, "+"},
-		{"simple subtract", "calc(20px - 8px)", 12, "-"},
-		{"simple multiply", "calc(4px * 2)", 8, "*"},
-		{"simple divide", "calc(20px / 4)", 5, "/"},
-		{"add negative", "calc(10px + -5px)", 5, "+"},
-		{"complex", "calc(100px - 20px)", 80, "-"},
-		{"decimal", "calc(10.5px + 5.5px)", 16, "+"},
+		{"simple add", "calc(10px + 5px)", 15},
+		{"simple subtract", "calc(20px - 8px)", 12},
+		{"simple multiply", "calc(4px * 2)", 8},
+		{"simple divide", "calc(20px / 4)", 5},
+		{"add negative", "calc(10px + -5px)", 5},
+		{"complex", "calc(100px - 20px)", 80},
+		{"decimal", "calc(10.5px + 5.5px)", 16},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			expr, err := ParseCalc(tc.input)
+			result, err := ParseCalc(tc.input, func(unit string) float64 { return 100 })
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			result := EvaluateCalc(expr)
-			if result.Value != tc.wantValue {
-				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			if result != tc.wantValue {
+				t.Errorf("got %f want %f", result, tc.wantValue)
 			}
 		})
 	}
@@ -340,7 +338,7 @@ func TestParseCalc_Invalid(t *testing.T) {
 	}
 	for _, input := range inputs {
 		t.Run(input, func(t *testing.T) {
-			_, err := ParseCalc(input)
+			_, err := ParseCalc(input, func(unit string) float64 { return 100 })
 			if err == nil {
 				t.Errorf("expected error for input %q", input)
 			}
@@ -365,13 +363,12 @@ func TestParseCalc_Evaluate(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			expr, err := ParseCalc(tc.input)
+			result, err := ParseCalc(tc.input, func(unit string) float64 { return 100 })
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			result := EvaluateCalc(expr)
-			if result.Value != tc.wantValue {
-				t.Errorf("got %f want %f", result.Value, tc.wantValue)
+			if result != tc.wantValue {
+				t.Errorf("got %f want %f", result, tc.wantValue)
 			}
 		})
 	}

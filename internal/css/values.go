@@ -486,6 +486,81 @@ type GradientStop struct {
 	Offset float64 // 0-1 percentage
 }
 
+// Transform represents a CSS 2D transform.
+type Transform struct {
+	Type     string    // "rotate", "scale", "translate", "none"
+	Rotate   float64   // rotation in degrees
+	ScaleX   float64   // scale X factor (1.0 = no scale)
+	ScaleY   float64   // scale Y factor (1.0 = no scale)
+	TranslateX float64 // translate X in pixels
+	TranslateY float64 // translate Y in pixels
+}
+
+// ParseTransform parses a CSS transform value.
+// Supports: rotate(<angle>), scale(<x>, <y>?), translate(<x>, <y>)
+// Examples: rotate(45deg), scale(1.5), translate(10px, 20px)
+func ParseTransform(s string) Transform {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "none" {
+		return Transform{Type: "none"}
+	}
+
+	t := Transform{Type: "rotate", Rotate: 0, ScaleX: 1, ScaleY: 1}
+
+	// Handle rotate
+	if strings.HasPrefix(s, "rotate(") && strings.HasSuffix(s, ")") {
+		inner := s[7 : len(s)-1]
+		inner = strings.TrimSpace(inner)
+		if angle, err := strconv.ParseFloat(strings.TrimSuffix(inner, "deg"), 64); err == nil {
+			t.Type = "rotate"
+			t.Rotate = angle
+			return t
+		}
+		// Try without "deg" suffix (just a number)
+		if angle, err := strconv.ParseFloat(inner, 64); err == nil {
+			t.Type = "rotate"
+			t.Rotate = angle
+			return t
+		}
+	}
+
+	// Handle scale
+	if strings.HasPrefix(s, "scale(") && strings.HasSuffix(s, ")") {
+		inner := s[6 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		t.Type = "scale"
+		if len(parts) == 1 {
+			v, _ := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+			t.ScaleX = v
+			t.ScaleY = v
+		} else if len(parts) >= 2 {
+			vx, _ := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+			vy, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+			t.ScaleX = vx
+			t.ScaleY = vy
+		}
+		return t
+	}
+
+	// Handle translate
+	if strings.HasPrefix(s, "translate(") && strings.HasSuffix(s, ")") {
+		inner := s[10 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		t.Type = "translate"
+		if len(parts) >= 1 {
+			vx := ParseLength(strings.TrimSpace(parts[0]))
+			t.TranslateX = vx.Value
+		}
+		if len(parts) >= 2 {
+			vy := ParseLength(strings.TrimSpace(parts[1]))
+			t.TranslateY = vy.Value
+		}
+		return t
+	}
+
+	return t
+}
+
 // ParseLinearGradient parses a linear-gradient value.
 // Format: linear-gradient(direction, color-stop1, color-stop2, ...)
 func ParseLinearGradient(s string) ([]GradientStop, string, error) {
@@ -610,22 +685,6 @@ type CalcExpression struct {
 	MinValues []Length // for min()/max() with multiple args
 }
 
-// ParseCalc parses a calc() expression and returns a CalcExpression.
-// Format: calc(expression)
-// Supports: +, -, *, / with Length values and nested parentheses.
-func ParseCalc(s string) (*CalcExpression, error) {
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "calc(") || !strings.HasSuffix(s, ")") {
-		return nil, fmt.Errorf("not a calc expression")
-	}
-	inner := s[5 : len(s)-1] // Remove "calc(" and ")"
-	inner = strings.TrimSpace(inner)
-	if inner == "" {
-		return nil, fmt.Errorf("empty calc expression")
-	}
-	return parseCalcExpression(inner)
-}
-
 func parseCalcExpression(s string) (*CalcExpression, error) {
 	s = strings.TrimSpace(s)
 	depth := 0
@@ -690,12 +749,12 @@ func isOpChar(c byte) bool {
 	return c == '+' || c == '-' || c == '*' || c == '/'
 }
 
-func parseLengthFromExpression(s string) (interface{}, error) {
+func parseLengthFromExpression(s string) (*CalcExpression, error) {
 	s = strings.TrimSpace(s)
 
 	// Handle nested calc
 	if strings.HasPrefix(s, "calc(") {
-		return ParseCalc(s)
+		return parseCalcExpression(s[5 : len(s)-1])
 	}
 
 	// Handle parenthesized expressions
@@ -708,7 +767,7 @@ func parseLengthFromExpression(s string) (interface{}, error) {
 	if length.IsAuto {
 		return nil, fmt.Errorf("auto not allowed in calc")
 	}
-	return length, nil
+	return &CalcExpression{Left: &length, Op: string('+'), Right: nil}, nil
 }
 
 // EvaluateCalc evaluates a CalcExpression to a Length.
@@ -1119,6 +1178,120 @@ const (
 	CounterStyleSquare
 	CounterStyleCircle
 )
+
+// CursorType represents CSS cursor styles.
+type CursorType int
+
+const (
+	CursorAuto CursorType = iota
+	CursorDefault
+	CursorPointer
+	CursorText
+	CursorWait
+	CursorCrosshair
+	CursorMove
+	CursorNotAllowed
+	CursorGrab
+	CursorGrabbing
+	CursorVerticalText
+	CursorHelp
+	CursorProgress
+	CursorCell
+	CursorContextMenu
+	CursorAlias
+	CursorCopy
+	CursorNone
+)
+
+// ParseCursor parses a CSS cursor value and returns the CursorType.
+// Supports: auto, default, pointer, text, wait, crosshair, move, not-allowed, grab, grabbing,
+// vertical-text, help, progress, cell, context-menu, alias, copy, none
+func ParseCursor(s string) CursorType {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "auto":
+		return CursorAuto
+	case "default":
+		return CursorDefault
+	case "pointer":
+		return CursorPointer
+	case "text":
+		return CursorText
+	case "wait":
+		return CursorWait
+	case "crosshair":
+		return CursorCrosshair
+	case "move":
+		return CursorMove
+	case "not-allowed", "notallowed":
+		return CursorNotAllowed
+	case "grab":
+		return CursorGrab
+	case "grabbing":
+		return CursorGrabbing
+	case "vertical-text":
+		return CursorVerticalText
+	case "help":
+		return CursorHelp
+	case "progress":
+		return CursorProgress
+	case "cell":
+		return CursorCell
+	case "context-menu":
+		return CursorContextMenu
+	case "alias":
+		return CursorAlias
+	case "copy":
+		return CursorCopy
+	case "none":
+		return CursorNone
+	default:
+		return CursorAuto
+	}
+}
+
+// CursorToString returns a human-readable string for the cursor type.
+func CursorToString(ct CursorType) string {
+	switch ct {
+	case CursorAuto:
+		return "auto"
+	case CursorDefault:
+		return "default"
+	case CursorPointer:
+		return "pointer"
+	case CursorText:
+		return "text"
+	case CursorWait:
+		return "wait"
+	case CursorCrosshair:
+		return "crosshair"
+	case CursorMove:
+		return "move"
+	case CursorNotAllowed:
+		return "not-allowed"
+	case CursorGrab:
+		return "grab"
+	case CursorGrabbing:
+		return "grabbing"
+	case CursorVerticalText:
+		return "vertical-text"
+	case CursorHelp:
+		return "help"
+	case CursorProgress:
+		return "progress"
+	case CursorCell:
+		return "cell"
+	case CursorContextMenu:
+		return "context-menu"
+	case CursorAlias:
+		return "alias"
+	case CursorCopy:
+		return "copy"
+	case CursorNone:
+		return "none"
+	default:
+		return "auto"
+	}
+}
 
 // Counter represents a CSS counter() value.
 type Counter struct {

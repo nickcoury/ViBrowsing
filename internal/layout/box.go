@@ -209,6 +209,13 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	inlineDecls := css.ParseInline(node.GetAttribute("style"))
 	style := css.ComputeStyle(tagName, class, id, inlineDecls, rules)
 
+	// Also apply node-aware matching for attribute selectors
+	nodeStyle := css.ComputeStyleForNode(node, rules)
+	// Merge nodeStyle into style (nodeStyle has attribute selectors applied)
+	for k, v := range nodeStyle {
+		style[k] = v
+	}
+
 	display := style["display"]
 
 	// Create box
@@ -296,6 +303,12 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		// Default mark styling
 		box.Style["background-color"] = "yellow"
 		box.Style["color"] = "black"
+	case "output":
+		box.Type = InlineBox
+		// output is an inline output element
+	case "del", "ins":
+		box.Type = InlineBox
+		// del/ins are inline by default (like u and s)
 	}
 
 	// Flex container

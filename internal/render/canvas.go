@@ -26,6 +26,15 @@ type Canvas struct {
 
 	// clipStack tracks clipping rectangles for overflow:hidden/scroll/auto
 	clipStack []struct{ X, Y, W, H int }
+
+	// scrollOffset is the current scroll position (in pixels)
+	// This is applied to all content when rendering
+	ScrollX int
+	ScrollY int
+
+	// pageHeight is the total height of the laid-out page content
+	// Used to calculate scroll limits
+	PageHeight int
 }
 
 // NewCanvas creates a new canvas with the given dimensions.
@@ -158,8 +167,9 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		return
 	}
 
-	contentX := int(box.ContentX)
-	contentY := int(box.ContentY)
+	// Apply scroll offset to content position
+	contentX := int(box.ContentX) - c.ScrollX
+	contentY := int(box.ContentY) - c.ScrollY
 	contentW := int(box.ContentW)
 	contentH := int(box.ContentH)
 
@@ -797,6 +807,38 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		}
 
 		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
+
+		// Draw text-decoration (underline, overline, line-through)
+		decorationLine := box.Style["text-decoration-line"]
+		if decorationLine == "" {
+			decorationLine = box.Style["text-decoration"]
+		}
+		if decorationLine != "" && decorationLine != "none" {
+			decorationColor := textColor
+			if dc := box.Style["text-decoration-color"]; dc != "" && dc != "currentColor" {
+				decorationColor = css.ParseColor(dc)
+			}
+
+			// Underline: 1px line at baseline (below text)
+			if decorationLine == "underline" || strings.Contains(decorationLine, "underline") {
+				decY := int(currentY + fontSize + 1)
+				decH := 1
+				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+			}
+			// Overline: 1px line above text
+			if decorationLine == "overline" || strings.Contains(decorationLine, "overline") {
+				decY := int(currentY)
+				decH := 1
+				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+			}
+			// Line-through: 1px line at middle of text
+			if decorationLine == "line-through" || strings.Contains(decorationLine, "line-through") {
+				decY := int(currentY + fontSize/2)
+				decH := 1
+				c.FillRect(int(currentX), decY, int(cw), decH, decorationColor)
+			}
+		}
+
 		currentX += cw + extraWord
 	}
 }
@@ -1608,11 +1650,12 @@ func (c *Canvas) DrawButton(box *layout.Box) {
 
 	// Draw button text
 	textColor := css.ParseColor(box.Style["color"])
-	if textColor.A == 0 || textColor.A == 255 && textColor.R == 0 && textColor.G == 0 && textColor.B == 0 {
+	if textColor.A == 0 {
 		textColor = css.Color{R: 0, G: 0, B: 0, A: 255}
 	}
 	fontSize := 14.0
 	charWidth := fontSize * 0.6
+	padding := 8
 
 	// Get button text from inner text
 	buttonText := ""
@@ -1623,12 +1666,22 @@ func (c *Canvas) DrawButton(box *layout.Box) {
 		buttonText = "Button"
 	}
 
-	maxChars := w / int(charWidth)
-	if maxChars > len(buttonText) {
-		maxChars = len(buttonText)
+	// Center text horizontally in button
+	textWidth := float64(len(buttonText)) * charWidth
+	textStartX := float64(x) + (float64(w)-textWidth)/2
+	if textStartX < float64(x)+float64(padding) {
+		textStartX = float64(x + padding)
 	}
-	for i := 0; i < maxChars; i++ {
-		c.FillRect(x+int(float64(i)*charWidth)+4, y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
+
+	// Draw each character as a simple block representation
+	// (This is a simplified text rendering - actual font rendering would be better)
+	for i := 0; i < len(buttonText); i++ {
+		charX := int(textStartX + float64(i)*charWidth)
+		charY := y + h/2 - int(fontSize/2)
+		// Draw character block with slight gaps for readability
+		if charX+int(charWidth) < x+w-padding {
+			c.FillRect(charX, charY, int(charWidth)-1, int(fontSize), textColor)
+		}
 	}
 }
 
@@ -1681,19 +1734,28 @@ func (c *Canvas) DrawSelect(box *layout.Box) {
 	textColor := css.Color{R: 0, G: 0, B: 0, A: 255}
 	fontSize := 14.0
 	charWidth := fontSize * 0.6
-	maxChars := (w - 20) / int(charWidth)
+	padding := 6
+	arrowSpace := 20 // Space reserved for dropdown arrow
+
+	maxChars := (w - padding*2 - arrowSpace) / int(charWidth)
 	if maxChars > len(selectText) {
 		maxChars = len(selectText)
 	}
+
+	// Draw each character
 	for i := 0; i < maxChars; i++ {
-		c.FillRect(x+4, y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
+		charX := x + padding + int(float64(i)*charWidth)
+		charY := y + h/2 - int(fontSize/2)
+		c.FillRect(charX, charY, int(charWidth)-1, int(fontSize), textColor)
 	}
 
-	// Draw dropdown arrow
-	arrowX := x + w - 16
+	// Draw dropdown arrow (simple triangle pointing down)
+	arrowX := x + w - 14
 	arrowY := y + h/2
+	// Triangle: three horizontal lines forming a down arrow
 	c.FillRect(arrowX, arrowY-2, 8, 2, textColor)
-	c.FillRect(arrowX+2, arrowY, 4, 2, textColor)
+	c.FillRect(arrowX+1, arrowY, 6, 2, textColor)
+	c.FillRect(arrowX+2, arrowY+2, 4, 2, textColor)
 }
 
 // DrawTextArea renders a <textarea> element as a bordered multiline box.
@@ -1742,10 +1804,73 @@ func (c *Canvas) DrawTextArea(box *layout.Box) {
 	}
 }
 
-// DrawLabel renders a <label> element as inline text.
+// DrawLabel renders a <label> element with visual association to its form element.
 func (c *Canvas) DrawLabel(box *layout.Box) {
 	// Labels are rendered by their text children, no special rendering needed
 	// The text boxes inside will be rendered normally
+
+	// Add visual association if label contains a form element as descendant
+	// This handles the case: <label>Name: <input id="name"></label>
+	associatedBox := c.findFormElementInLabel(box)
+	if associatedBox == nil {
+		return
+	}
+
+	// Draw a subtle connector line between the last text of label and the form element
+	labelX := int(box.ContentX)
+	labelY := int(box.ContentY + box.ContentH)
+	labelW := int(box.ContentW)
+
+	assocX := int(associatedBox.ContentX)
+	assocY := int(associatedBox.ContentY)
+
+	// Draw a connecting line from label to the associated element
+	connectorColor := css.Color{R: 100, G: 149, B: 237, A: 200} // Cornflower blue
+
+	// If label and element are on similar Y positions, draw a horizontal connector
+	if absInt(assocY - labelY) < 30 || absInt(assocY - int(box.ContentY)) < 30 {
+		if labelX + labelW < assocX {
+			// Label is to the left, connect right edge to left edge of element
+			midY := labelY
+			if absInt(assocY - int(box.ContentY)) < absInt(labelY - int(box.ContentY)) {
+				midY = int(box.ContentY) + int(box.ContentH/2)
+			}
+			// Vertical line from label down to element's Y
+			c.FillRect(labelX+labelW-2, midY, 2, assocY-midY+4, connectorColor)
+			// Horizontal line to element
+			c.FillRect(labelX+labelW-2, assocY, assocX-(labelX+labelW-2), 2, connectorColor)
+		}
+	}
+}
+
+// findFormElementInLabel searches for a form element (input, select, textarea, button)
+// that is a descendant of the label box.
+func (c *Canvas) findFormElementInLabel(box *layout.Box) *layout.Box {
+	if box == nil {
+		return nil
+	}
+
+	// Check if this box is a form element
+	if box.Type == layout.ButtonBox || box.Type == layout.SelectBox ||
+		box.Type == layout.TextAreaBox || (box.Type == layout.InlineBox && box.Node != nil && box.Node.TagName == "input") {
+		return box
+	}
+
+	// Search children recursively
+	for _, child := range box.Children {
+		if found := c.findFormElementInLabel(child); found != nil {
+			return found
+		}
+	}
+
+	return nil
+}
+
+func absInt(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // DrawMedia renders a <video> or <audio> element with controls UI.

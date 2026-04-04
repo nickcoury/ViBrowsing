@@ -3,6 +3,8 @@ package css
 import (
 	"strconv"
 	"strings"
+
+	"github.com/nickcoury/ViBrowsing/internal/html"
 )
 
 // Specificity represents a CSS selector's specificity (a, b, c).
@@ -125,6 +127,19 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"transition-duration":           "0s",
 		"transition-timing-function":    "ease",
 		"transition-delay":              "0s",
+		// New CSS properties
+		"resize":              "none",
+		"pointer-events":      "auto",
+		"overscroll-behavior": "auto",
+		"scroll-behavior":     "auto",
+		"text-decoration-line":   "none",
+		"text-decoration-color":  "currentColor",
+		"text-decoration-style": "solid",
+		"will-change":         "auto",
+		"image-rendering":     "auto",
+		"contain":             "none",
+		"mix-blend-mode":      "normal",
+		"hanging-punctuation": "none",
 	}
 
 	// Element-specific default styles (HTML5 user agent defaults)
@@ -204,6 +219,12 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		props["display"] = "inline-block"
 		props["background"] = "#000"
 		props["color"] = "#fff"
+	case "del", "s", "strike":
+		// Deleted text — typically rendered with strikethrough
+		props["text-decoration"] = "line-through"
+	case "ins", "u":
+		// Inserted text — typically rendered with underline
+		props["text-decoration"] = "underline"
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -223,6 +244,240 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 	return props
 }
 
+// ComputeStyleForNode computes the cascaded style for an HTML node element.
+// This version supports attribute selectors by having access to the full node.
+func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
+	if node == nil || node.Type != html.NodeElement {
+		return map[string]string{}
+	}
+
+	tagName := node.TagName
+	class := node.GetAttribute("class")
+	id := node.GetAttribute("id")
+	inlineDecls := ParseInline(node.GetAttribute("style"))
+
+	// Start with user-agent defaults
+	props := map[string]string{
+		"display":         "inline",
+		"visibility":      "visible",
+		"color":           "black",
+		"background":      "transparent",
+		"font-size":       "16px",
+		"font-family":     "serif",
+		"font-weight":     "normal",
+		"font-style":      "normal",
+		"text-decoration": "none",
+		"margin-top":      "0",
+		"margin-right":    "0",
+		"margin-bottom":   "0",
+		"margin-left":     "0",
+		"padding-top":     "0",
+		"padding-right":   "0",
+		"padding-bottom":  "0",
+		"padding-left":    "0",
+		"border-width":    "0",
+		"border-style":   "none",
+		"border-color":   "black",
+		"width":           "auto",
+		"height":          "auto",
+		"text-align":      "left",
+		"text-indent":     "0",
+		"line-height":     "1.2",
+		"letter-spacing":  "0",
+		"word-spacing":    "0",
+		"text-transform":  "none",
+		"font-variant":    "normal",
+		"unicode-bidi":   "normal",
+		"direction":      "ltr",
+		"writing-mode":   "horizontal-tb",
+		"tab-size":       "8",
+		"quotes":         "auto",
+		"vertical-align":  "baseline",
+		"opacity":         "1",
+		"white-space":     "normal",
+		"overflow":        "visible",
+		"overflow-x":      "visible",
+		"overflow-y":      "visible",
+		"word-wrap":       "normal",
+		"position":        "static",
+		"top":             "auto",
+		"right":           "auto",
+		"bottom":          "auto",
+		"left":            "auto",
+		"float":           "none",
+		"z-index":         "auto",
+		"flex-direction":  "row",
+		"flex-wrap":       "nowrap",
+		"flex-flow":       "row nowrap",
+		"justify-content": "flex-start",
+		"align-items":     "stretch",
+		"align-content":   "normal",
+		"gap":             "0",
+		"order":           "0",
+		"flex-grow":       "0",
+		"flex-shrink":     "1",
+		"flex-basis":      "auto",
+		"border-radius":   "0",
+		"background-color": "transparent",
+		"background-image": "none",
+		"background-repeat": "repeat",
+		"background-position": "0 0",
+		"background-size":  "auto auto",
+		"list-style-type":  "disc",
+		"list-style-position": "outside",
+		"list-style-image": "none",
+		"outline-width":   "0",
+		"outline-style":   "none",
+		"outline-color":   "black",
+		"box-shadow":      "none",
+		"cursor":          "auto",
+		"transform":       "none",
+		"text-shadow":     "none",
+		"text-overflow":   "clip",
+		"content":         "normal",
+		"animation-name":        "none",
+		"animation-duration":    "0s",
+		"animation-timing-function": "ease",
+		"animation-delay":       "0s",
+		"animation-iteration-count": "1",
+		"animation-direction":   "normal",
+		"animation-fill-mode":   "none",
+		"aspect-ratio":    "auto",
+		"object-fit":       "fill",
+		"object-position":  "50% 50%",
+		"filter":           "none",
+		"backdrop-filter":  "none",
+		"clip-path":        "none",
+		"clip":             "auto",
+		"column-width":        "auto",
+		"column-count":        "1",
+		"column-gap":          "normal",
+		"column-rule-width":   "medium",
+		"column-rule-style":  "none",
+		"column-rule-color":   "black",
+		"break-inside":     "auto",
+		"break-before":     "auto",
+		"break-after":      "auto",
+		"transition-property":           "none",
+		"transition-duration":           "0s",
+		"transition-timing-function":    "ease",
+		"transition-delay":              "0s",
+		"resize":              "none",
+		"pointer-events":      "auto",
+		"overscroll-behavior": "auto",
+		"scroll-behavior":     "auto",
+		"text-decoration-line":   "none",
+		"text-decoration-color":  "currentColor",
+		"text-decoration-style": "solid",
+		"will-change":         "auto",
+		"image-rendering":     "auto",
+		"contain":             "none",
+		"mix-blend-mode":      "normal",
+		"hanging-punctuation": "none",
+	}
+
+	// Element-specific defaults
+	switch tagName {
+	case "strong", "b", "th":
+		props["font-weight"] = "bold"
+	case "em", "i", "cite", "var":
+		props["font-style"] = "italic"
+	case "code", "kbd", "samp", "pre":
+		props["font-family"] = "monospace"
+		if tagName == "pre" {
+			props["white-space"] = "pre"
+		}
+	case "blockquote":
+		props["display"] = "block"
+		props["margin-left"] = "40px"
+		props["margin-right"] = "40px"
+		props["font-style"] = "italic"
+	case "address":
+		props["display"] = "block"
+		props["font-style"] = "italic"
+	case "header", "footer", "nav", "section", "article", "aside", "main", "figure", "figcaption", "details", "summary":
+		props["display"] = "block"
+	case "noscript":
+		props["display"] = "block"
+	case "hr":
+		props["display"] = "block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["margin-top"] = "8px"
+		props["margin-bottom"] = "8px"
+		props["height"] = "1px"
+	case "input":
+		props["display"] = "inline-block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["padding-top"] = "2px"
+		props["padding-bottom"] = "2px"
+		props["padding-left"] = "4px"
+		props["padding-right"] = "4px"
+	case "button":
+		props["display"] = "inline-block"
+		props["border-width"] = "2px"
+		props["border-style"] = "solid"
+		props["border-color"] = "#444"
+		props["padding-top"] = "4px"
+		props["padding-bottom"] = "4px"
+		props["padding-left"] = "12px"
+		props["padding-right"] = "12px"
+		props["background"] = "#f0f0f0"
+	case "select":
+		props["display"] = "inline-block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["padding-top"] = "2px"
+		props["padding-bottom"] = "2px"
+		props["padding-left"] = "4px"
+		props["padding-right"] = "4px"
+		props["background"] = "white"
+	case "textarea":
+		props["display"] = "inline-block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["padding-top"] = "4px"
+		props["padding-bottom"] = "4px"
+		props["padding-left"] = "4px"
+		props["padding-right"] = "4px"
+		props["background"] = "white"
+		props["width"] = "200px"
+		props["height"] = "100px"
+	case "video", "audio":
+		props["display"] = "inline-block"
+		props["background"] = "#000"
+		props["color"] = "#fff"
+	case "del", "s", "strike":
+		props["text-decoration"] = "line-through"
+	case "ins", "u":
+		props["text-decoration"] = "underline"
+	}
+
+	for _, rule := range rules {
+		// Use node-aware selector matching for attribute selectors
+		if matchSelector(tagName, class, id, rule.Selector) {
+			// Also try node-aware matching for attribute selectors
+			if MatchNodeSelector(node, rule.Selector) {
+				for _, decl := range rule.Declarations {
+					applyDecl(props, decl)
+				}
+			}
+		}
+	}
+
+	// Inline styles have highest priority
+	for _, decl := range inlineDecls {
+		applyDecl(props, decl)
+	}
+
+	return props
+}
+
 // matchSelector returns true if the element matches the CSS selector.
 // Supports: tag, .class, #id, tag.class, tag#id, [attr], [attr=value], [attr~=value], [attr|=value]
 // Also supports combinators: descendant (space), child (>), adjacent sibling (+), general sibling (~)
@@ -232,8 +487,6 @@ func matchSelector(tagName, class, id, selector string) bool {
 	// Parse selector parts
 	var selTag, selClass, selID string
 	var seenTag, seenClass, seenID bool
-	var attrName, attrValue string
-	var attrOp string // "", "=", "~=", "|="
 
 	for len(sel) > 0 {
 		if sel[0] == '*' {
@@ -242,30 +495,12 @@ func matchSelector(tagName, class, id, selector string) bool {
 		}
 
 		// Attribute selector: [attr], [attr=value], [attr~=value], [attr|=value]
+		// Note: attribute selector matching is deferred to matchAttributeSelector
+		// This just skips over the attribute selector in the selector string
 		if sel[0] == '[' {
 			end := strings.Index(sel[1:], "]")
 			if end > 0 {
-				attrPart := sel[1 : end+1]
 				sel = sel[end+2:]
-
-				// Parse attribute selector
-				eqIdx := strings.Index(attrPart, "=")
-				if eqIdx > 0 {
-					attrName = attrPart[:eqIdx]
-					attrValue = attrPart[eqIdx+1:]
-					attrValue = strings.Trim(attrValue, "\"")
-					if strings.HasPrefix(attrPart, attrName+"~=") {
-						attrOp = "~="
-					} else if strings.HasPrefix(attrPart, attrName+"|=") {
-						attrOp = "|="
-					} else {
-						attrOp = "="
-					}
-				} else {
-					attrName = attrPart
-					attrOp = ""
-					attrValue = ""
-				}
 				continue
 			}
 		}
@@ -273,7 +508,7 @@ func matchSelector(tagName, class, id, selector string) bool {
 		if sel[0] == '.' {
 			sel = sel[1:]
 			end := 0
-			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' {
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' && sel[end] != ' ' {
 				end++
 			}
 			selClass = sel[:end]
@@ -282,15 +517,38 @@ func matchSelector(tagName, class, id, selector string) bool {
 		} else if sel[0] == '#' {
 			sel = sel[1:]
 			end := 0
-			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' {
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' && sel[end] != ' ' {
 				end++
 			}
 			selID = sel[:end]
 			sel = sel[end:]
 			seenID = true
+		} else if sel[0] == ' ' {
+			// Descendant combinator — skip whitespace
+			sel = sel[1:]
+		} else if sel[0] == ':' {
+			// Pseudo-class or pseudo-element — skip
+			sel = sel[1:]
+			if len(sel) > 0 && sel[0] == ':' {
+				sel = sel[1:]
+			}
+			// Skip function arguments if present
+			if len(sel) > 0 && sel[0] == '(' {
+				depth := 1
+				sel = sel[1:]
+				for len(sel) > 0 && depth > 0 {
+					if sel[0] == '(' {
+						depth++
+					} else if sel[0] == ')' {
+						depth--
+					}
+					sel = sel[1:]
+				}
+			}
 		} else {
+			// Tag name
 			end := 0
-			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' {
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' && sel[end] != ' ' {
 				end++
 			}
 			selTag = sel[:end]
@@ -310,7 +568,7 @@ func matchSelector(tagName, class, id, selector string) bool {
 	}
 
 	// Attribute selectors always pass at this level since we don't have node attributes here
-	// The actual attribute matching is done at a higher level via matchAttributeSelector
+	// The actual attribute matching is done at a higher level via MatchNodeSelector
 	return true
 }
 
@@ -318,11 +576,13 @@ func matchSelector(tagName, class, id, selector string) bool {
 func matchAttributeSelector(attrValue, op, selector string) bool {
 	switch op {
 	case "":
+		// [attr] — attribute exists
 		return attrValue != ""
 	case "=":
+		// [attr=value] — exact match
 		return attrValue == selector
 	case "~=":
-		// Space-separated list contains value
+		// [attr~=value] — space-separated list contains value
 		for _, v := range strings.Fields(attrValue) {
 			if v == selector {
 				return true
@@ -330,10 +590,219 @@ func matchAttributeSelector(attrValue, op, selector string) bool {
 		}
 		return false
 	case "|=":
-		// Value or value followed by hyphen
+		// [attr|=value] — value or value followed by hyphen
 		return attrValue == selector || strings.HasPrefix(attrValue, selector+"-")
+	case "^=":
+		// [attr^=value] — starts with value
+		return strings.HasPrefix(attrValue, selector)
+	case "$=":
+		// [attr$=value] — ends with value
+		return strings.HasSuffix(attrValue, selector)
+	case "*=":
+		// [attr*=value] — contains value
+		return strings.Contains(attrValue, selector)
 	}
 	return false
+}
+
+// parseAttributeSelector parses an attribute selector string like [attr], [attr=value],
+// [attr~=value], [attr|=value], [attr^=value], [attr$=value], [attr*=value]
+// and returns (attrName, operator, value).
+func parseAttributeSelector(selector string) (string, string, string) {
+	// selector is like [attr], [attr=value], [attr="value"], etc.
+	// Remove surrounding brackets
+	s := selector
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+
+	// Find the operator
+	var attrName, op, value string
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "="
+			value = strings.TrimSpace(s[i+1:])
+			// Handle quoted values
+			if len(value) >= 2 {
+				if value[0] == '"' || value[0] == '\'' {
+					value = value[1 : len(value)-1]
+				}
+			}
+			break
+		}
+		if c == '~' && i+1 < len(s) && s[i+1] == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "~="
+			value = strings.TrimSpace(s[i+2:])
+			break
+		}
+		if c == '|' && i+1 < len(s) && s[i+1] == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "|="
+			value = strings.TrimSpace(s[i+2:])
+			break
+		}
+		if c == '^' && i+1 < len(s) && s[i+1] == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "^="
+			value = strings.TrimSpace(s[i+2:])
+			break
+		}
+		if c == '$' && i+1 < len(s) && s[i+1] == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "$="
+			value = strings.TrimSpace(s[i+2:])
+			break
+		}
+		if c == '*' && i+1 < len(s) && s[i+1] == '=' && op == "" {
+			attrName = strings.TrimSpace(s[:i])
+			op = "*="
+			value = strings.TrimSpace(s[i+2:])
+			break
+		}
+	}
+
+	if op == "" {
+		// No operator found — just [attr]
+		attrName = strings.TrimSpace(s)
+		op = ""
+		value = ""
+	}
+
+	// Remove quotes from value if present
+	if len(value) >= 2 {
+		if (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+	}
+
+	return attrName, op, value
+}
+
+// MatchNodeSelector returns true if the element node matches the full CSS selector.
+// This handles tag names, IDs, classes, attribute selectors ([attr], [attr=value], etc.),
+// and combinators (descendant space, child >, adjacent sibling +, general sibling ~).
+func MatchNodeSelector(node *html.Node, selector string) bool {
+	if node == nil || node.Type != html.NodeElement {
+		return false
+	}
+
+	// Parse the selector into component parts (simple selectors + combinators)
+	// A simple selector is: tag#id.class[attr]*:type
+	// Combinators separate simple selectors: " " (descendant), ">" (child), "+" (adjacent), "~" (sibling)
+
+	// For now, implement basic selector matching without complex combinator chains
+	// Complex chains (div > p + span) require ancestor/sibling walking
+
+	sel := strings.TrimSpace(selector)
+
+	// Handle simple selectors (no leading combinator)
+	return matchSimpleSelector(node, sel)
+}
+
+// matchSimpleSelector matches a simple selector (no combinators) against a node.
+// Simple selector: tag#id.class[attr]:pseudo
+func matchSimpleSelector(node *html.Node, selector string) bool {
+	sel := selector
+
+	// Universal selector * matches everything
+	if sel == "*" {
+		return true
+	}
+
+	// Track what we've matched
+	tagName := strings.ToLower(node.TagName)
+
+	// Parse the selector from left to right
+	for len(sel) > 0 {
+		sel = strings.TrimSpace(sel)
+		if len(sel) == 0 {
+			break
+		}
+
+		switch sel[0] {
+		case '#':
+			// ID selector
+			sel = sel[1:]
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' {
+				end++
+			}
+			id := sel[:end]
+			sel = sel[end:]
+			if node.GetAttribute("id") != id {
+				return false
+			}
+
+		case '.':
+			// Class selector
+			sel = sel[1:]
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' {
+				end++
+			}
+			class := sel[:end]
+			sel = sel[end:]
+			if !node.ClassList().Contains(class) {
+				return false
+			}
+
+		case '[':
+			// Attribute selector
+			end := strings.Index(sel[1:], "]")
+			if end < 0 {
+				return false
+			}
+			attrSel := sel[:end+2]
+			sel = sel[end+2:]
+
+			attrName, op, value := parseAttributeSelector(attrSel)
+			nodeAttr := node.GetAttribute(attrName)
+			if !matchAttributeSelector(nodeAttr, op, value) {
+				return false
+			}
+
+		case ':':
+			// Pseudo-class selector (partial implementation)
+			sel = sel[1:]
+			if sel[0] == ':' {
+				// Pseudo-element — skip for now (::before, ::after)
+				sel = sel[1:]
+			}
+			// Skip pseudo-class arguments for now
+			if len(sel) > 0 && sel[0] == '(' {
+				depth := 1
+				sel = sel[1:]
+				for len(sel) > 0 && depth > 0 {
+					if sel[0] == '(' {
+						depth++
+					} else if sel[0] == ')' {
+						depth--
+					}
+					sel = sel[1:]
+				}
+				if len(sel) > 0 {
+					sel = sel[1:]
+				}
+			}
+
+		default:
+			// Tag selector
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' && sel[end] != ' ' {
+				end++
+			}
+			tag := sel[:end]
+			sel = sel[end:]
+			if tag != "*" && tagName != strings.ToLower(tag) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func tagMatch(elTag, selTag string) bool {
@@ -383,20 +852,62 @@ func computeSpecificity(selector string) Specificity {
 		case '#':
 			a++
 			sel = sel[1:]
-			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' {
+			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' && sel[0] != '[' && sel[0] != ':' {
 				sel = sel[1:]
 			}
 		case '.':
 			b++
 			sel = sel[1:]
-			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' {
+			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' && sel[0] != '[' && sel[0] != ':' {
 				sel = sel[1:]
+			}
+		case '[':
+			// Attribute selector
+			b++
+			end := strings.Index(sel[1:], "]")
+			if end > 0 {
+				sel = sel[end+2:]
+				for len(sel) > 0 && sel[0] == ' ' {
+					sel = sel[1:]
+				}
+			} else {
+				break
+			}
+		case ':':
+			// Pseudo-class or pseudo-element
+			b++
+			sel = sel[1:]
+			if sel[0] == ':' {
+				// Pseudo-element (::before) — CSS3 specificity treats these like class (b)
+				sel = sel[1:]
+			}
+			for len(sel) > 0 && sel[0] != ' ' && sel[0] != '[' && sel[0] != '.' && sel[0] != '#' && sel[0] != ':' && sel[0] != '(' {
+				sel = sel[1:]
+			}
+			if len(sel) > 0 && sel[0] == '(' {
+				// Skip function arguments
+				depth := 1
+				sel = sel[1:]
+				for len(sel) > 0 && depth > 0 {
+					if sel[0] == '(' {
+						depth++
+					} else if sel[0] == ')' {
+						depth--
+					}
+					sel = sel[1:]
+				}
 			}
 		case ' ':
 			sel = sel[1:]
+		case '>':
+			sel = sel[1:]
+		case '+':
+			sel = sel[1:]
+		case '~':
+			sel = sel[1:]
 		default:
 			c++
-			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' {
+			for len(sel) > 0 && sel[0] != '.' && sel[0] != '#' && sel[0] != ' ' && sel[0] != '[' && sel[0] != ':' && sel[0] != '>' && sel[0] != '+' && sel[0] != '~' {
 				sel = sel[1:]
 			}
 		}
@@ -598,20 +1109,10 @@ func applyDecl(props map[string]string, decl Declaration) {
 				props["flex-wrap"] = part
 			}
 		}
-	case "flex-direction":
-		props["flex-direction"] = value
-	case "flex-wrap":
-		props["flex-wrap"] = value
 	case "align-content":
 		props["align-content"] = value
 	case "order":
 		props["order"] = value
-	case "flex-grow":
-		props["flex-grow"] = value
-	case "flex-shrink":
-		props["flex-shrink"] = value
-	case "flex-basis":
-		props["flex-basis"] = value
 	case "border-radius":
 		props["border-radius"] = value
 	case "outline-width":
@@ -717,6 +1218,53 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["transition-timing-function"] = value
 	case "transition-delay":
 		props["transition-delay"] = value
+	case "resize":
+		props["resize"] = value
+	case "pointer-events":
+		props["pointer-events"] = value
+	case "overscroll-behavior":
+		props["overscroll-behavior"] = value
+	case "overscroll-behavior-x":
+		props["overscroll-behavior-x"] = value
+	case "overscroll-behavior-y":
+		props["overscroll-behavior-y"] = value
+	case "scroll-behavior":
+		props["scroll-behavior"] = value
+	case "text-decoration-line":
+		props["text-decoration-line"] = value
+	case "text-decoration-color":
+		props["text-decoration-color"] = value
+	case "text-decoration-style":
+		props["text-decoration-style"] = value
+	case "text-decoration":
+		// Shorthand: line style color (e.g., "underline solid red")
+		// Parse individual values
+		parts := strings.Fields(value)
+		for _, part := range parts {
+			lower := strings.ToLower(part)
+			if lower == "underline" || lower == "overline" || lower == "line-through" || lower == "blink" || lower == "none" {
+				props["text-decoration-line"] = lower
+			} else if lower == "solid" || lower == "double" || lower == "dotted" || lower == "dashed" || lower == "wavy" {
+				props["text-decoration-style"] = lower
+			} else {
+				// Assume it's a color
+				props["text-decoration-color"] = part
+			}
+		}
+		// Default style to solid if only line is specified
+		if props["text-decoration-style"] == "" {
+			props["text-decoration-style"] = "solid"
+		}
+	case "will-change":
+		props["will-change"] = value
+	case "image-rendering":
+		props["image-rendering"] = value
+	case "contain":
+		props["contain"] = value
+	case "mix-blend-mode":
+		props["mix-blend-mode"] = value
+	case "hanging-punctuation":
+		props["hanging-punctuation"] = value
 	}
 }
 

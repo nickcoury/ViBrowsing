@@ -61,25 +61,6 @@ func (n *Node) AppendChild(child *Node) {
 	n.Children = append(n.Children, child)
 }
 
-// QuerySelectorAll returns all descendant elements matching the selector.
-// Currently supports: tagname, #id, .class, and combinations.
-func (n *Node) QuerySelectorAll(selector string) []*Node {
-	var results []*Node
-	n.querySelectorAll(selector, &results)
-	return results
-}
-
-func (n *Node) querySelectorAll(selector string, results *[]*Node) {
-	// Simple selector matching
-	if matchSelector(n, selector) {
-		*results = append(*results, n)
-	}
-
-	for _, child := range n.Children {
-		child.querySelectorAll(selector, results)
-	}
-}
-
 // matchSelector returns true if node matches the given selector.
 // Tag name matching is case-insensitive per HTML5 spec.
 func matchSelector(n *Node, selector string) bool {
@@ -421,7 +402,7 @@ func (n *Node) SetInnerHTML(htmlStr string) {
 	// Remove all children
 	n.Children = nil
 	// Parse the HTML
-	tokens := Tokenize(htmlStr)
+	tokens := Tokenize([]byte(htmlStr))
 	parser := NewParser(tokens)
 	frag := parser.Parse()
 	// Move children from parsed fragment to this node
@@ -450,12 +431,6 @@ func (n *Node) OuterHTML() string {
 	}
 	html += "</" + n.TagName + ">"
 	return html
-}
-
-// AppendChild adds a child node to the end of the parent's children list.
-func (n *Node) AppendChild(child *Node) {
-	child.Parent = n
-	n.Children = append(n.Children, child)
 }
 
 // RemoveChild removes the child node from the parent's children list.

@@ -597,3 +597,74 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Implement `text-shadow` multiple shadows** — Multiple comma-separated shadows on text
 - [ ] **Implement `box-shadow` multiple shadows** — Multiple comma-separated drop shadows
 - [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box
+
+---
+
+## 🆕 New Items (2026-04-05 Sprint 2)
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `clip-path` drawing** — Actually clip element rendering to inset/circle/polygon shapes
+- [ ] **Implement CSS `filter` drawing** — Actually apply blur, brightness, contrast, grayscale, sepia effects to rendered pixels
+- [ ] **Implement CSS `backdrop-filter` drawing** — Apply blur to elements behind fixed/absolute positioned elements
+- [ ] **Implement `<iframe>` rendering** — Show placeholder for iframes (recursive rendering is complex)
+- [ ] **Implement `<canvas>` 2D context** — Render canvas drawing commands to output
+- [ ] **Implement emoji rendering** — Proper color emoji display (may need fontconfig)
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+- [ ] **Fix table cell collapsing borders** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
+- [ ] **Fix float clearing** — blocks that clear:left/right/both should properly position below the float, not overlap it
+- [ ] **Fix `:nth-child()` selector** — Complex `an+b` formulas (even, odd, 2n+1, 3n-1) don't work
+
+### 🟡 High (CSS Selectors & Cascade)
+
+- [ ] **Implement `:not()` pseudo-class** — Negation selector with complex selectors inside
+- [ ] **Implement `:checked`, `:disabled`, `:enabled` pseudo-classes** — For form state matching
+- [ ] **Implement `::before` and `::after` pseudo-elements** — With `content` property
+- [ ] **Implement `:first-line` and `::first-letter`** — Text segment pseudo-elements
+- [ ] **Implement CSS combinators fully** — Descendant (space), child (>), adjacent sibling (+), general sibling (~) with ancestor/sibling traversal
+
+### 🟡 High (URL & Navigation)
+
+- [ ] **Implement HTTP cookies** — Send cookies on subsequent requests to same origin
+- [ ] **Implement browser history** — Back/forward navigation between visited URLs
+- [ ] **Implement link target resolution** — `<a target="_blank">` opens in new tab
+
+### 🟡 High (Platform)
+
+- [ ] **Implement scroll support** — Mouse wheel / scrollbar navigation through page content
+- [ ] **Implement click interaction** — Clicking links should navigate to those URLs
+- [ ] **Implement text selection** — Highlight text with mouse
+- [ ] **Implement window title** — Render document `<title>` in window title bar
+- [ ] **Implement favicon** — Fetch and display favicon.ico in window
+
+### 🟢 Medium (Performance)
+
+- [ ] **Lazy image decoding** — Don't decode images until visible in viewport
+- [ ] **CSS selector indexing** — Build index of elements by class/id/tag for fast selector matching
+- [ ] **Text measurement caching** — Cache Ebitengine text measurement results per font/size/text combo
+- [ ] **Streaming HTML parse** — For large pages, parse HTML incrementally without buffering all
+- [ ] **Memory pool for nodes** — Reuse allocated Node/Token objects instead of GC-heavy allocation per parse
+
+### 🟢 Medium (Content & Rendering)
+
+- [ ] **Implement `<abbr>` with title tooltip** — Abbreviation with full text on hover
+- [ ] **Implement `<ruby>` layout** — Ruby text above/below base text for East Asian typography
+- [ ] **Implement `calc()` evaluation in layout** — Actually compute `width: calc(100% - 20px)` during layout
+- [ ] **Implement CSS `@media` query matching** — Apply rules only when viewport matches
+- [ ] **Implement CSS `cursor`** — Show appropriate cursor on interactive elements
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **html5lib test corpus** — Download and run 500+ HTML parsing edge case tests
+- [ ] **Visual screenshot tests** — Collect baseline screenshots, diff on changes
+- [ ] **Fuzz testing** — Use go-fuzz to generate random HTML/CSS and verify no panics
+- [ ] **Performance benchmarks** — Measure parse time, layout time, paint time for pages of varying size
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-repeat: space/round`** — Tile backgrounds with spacing or scaling
+- [ ] **Implement `background-position` (percentages)** — Offset background image by percentage
+- [ ] **Implement `background-size: cover/contain`** — Scale background to fill or fit
+- [ ] **Implement `text-shadow` multiple shadows** — Multiple comma-separated shadows on text
+- [ ] **Implement `box-shadow` multiple shadows** — Multiple comma-separated drop shadows
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box
