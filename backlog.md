@@ -22,22 +22,31 @@
 ## 🟡 High (HTML/CSS Coverage)
 
 ### HTML Elements
-- [ ] **Implement all HTML void elements** — `<img>` (with alt text rendering), `<br>`, `<hr>`, `<input>`, `<meta>`, `<link>`, `<source>`, `<track>`, `<wbr>`, `<area>`, `<base>`, `<col>`, `<embed>`, `<param>`
+- [x] ~~Implement `<br>` void element~~ (2026-04-04 sprint) — br forces line break in inline layout; advances Y, resets X, flushes line box
+- [x] ~~Implement `<hr>` void element~~ (2026-04-04 sprint) — HorizontalRuleBox type; renders as 1px border with margin
+- [x] ~~Implement `<wbr>` void element~~ (2026-04-04 sprint) — zero-width break opportunity in inline layout
+- [x] ~~Implement `<meta>` and `<link>` void elements~~ (2026-04-04 sprint) — handled via voidElements list in parser (no crash)
+- [x] ~~Implement `<input>` form element (visual)~~ (2026-04-04 sprint) — renders as inline-block with border and padding
+- [ ] **Implement remaining void elements** — `<area>`, `<base>`, `<col>`, `<embed>`, `<param>`, `<source>`, `<track>`
 - [ ] **Implement table layout** — `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`, `<td>`, `<th>`, `colspan`, `rowspan`, `border` attribute. Tables are complex in HTML/CSS
-- [ ] **Implement list layout** — `<ul>`, `<ol>`, `<li>` with bullet/number markers. Need to handle `list-style-type`, `list-style-image`, `list-style-position`
+- [x] ~~Implement list layout~~ (2026-04-04 sprint) — ListItemBox type, layoutListItemChild with bullet/number markers, DrawListMarker renders disc/square/circle/number markers, list-style-type/position/image properties
 - [ ] **Implement form elements** — `<input>`, `<button>`, `<select>`, `<textarea>`, `<label>` (visual only, no interactivity)
 - [ ] **Implement media elements** — `<img>` (display), `<video>`, `<audio>` (show controls UI)
-- [ ] **Implement semantic elements** — `<header>`, `<footer>`, `<nav>`, `<article>`, `<section>`, `<aside>`, `<main>` (these should render as blocks)
+- [x] ~~Implement semantic block elements~~ (2026-04-04 sprint) — header, footer, nav, article, section, aside, main, figure, figcaption, details, summary all render as block
+- [x] ~~Implement `<noscript>`~~ (2026-04-04 sprint) — treated as block element, content rendered
 - [ ] **Implement `<script>` and `<style>`** — style content parsed as CSS; script content may be JS (don't execute, just skip)
-- [ ] **Implement `<noscript>`** — render content when JS is disabled (show noscript content)
 - [ ] **Implement `<template>`** — parse but don't render template content
 
 ### CSS Properties
 - [x] ~~Implement CSS `color` property~~ (2026-04-04 sprint) — ParseColor now supports RGB, RGBA, HSL, HSLA, hex (#RGB, #RRGGBB), and named colors; rgba() alpha accepts 0-1 and percentage; fixed RGBA() to properly expand 8-bit to 16-bit
 - [x] ~~Implement CSS `background-color`~~ (2026-04-04 sprint) — same ParseColor parser used for all color values including hsl()/hsla(); ParseFloat255 fixed to cap at 255 not 1
-- [ ] **Implement CSS `background-image`, `background-repeat`, `background-position`, `background-size`** — for gradients and images
-- [ ] **Implement CSS `background` shorthand** — `background: #fff url(img.png) no-repeat center top`
-- [ ] **Implement CSS `border-radius`** — rounded corners on boxes, including per-corner (`border-radius: 10px 5px 10px 5px`)
+- [x] ~~Implement CSS `background` shorthand~~ (2026-04-04 sprint) — parses color/image/repeat/position/size; background shorthand parsing with background-color/image/repeat/position/size properties
+- [x] ~~Implement CSS `text-shadow`~~ (2026-04-04 sprint) — parse offset-x offset-y blur color; draw shadow when rendering text
+- [x] ~~Implement CSS `background-image` (parsing)~~ (2026-04-04 sprint) — parses url() values, stores in style; placeholder drawing for url() images
+- [ ] **Implement CSS `background-image` (drawing)** — actually draw background image from URL (currently placeholder only)
+- [ ] **Implement CSS `background-repeat`, `background-position`, `background-size`** — drawing with repeat patterns and positioned/sized backgrounds
+- [ ] **Implement CSS `background` gradients** — `linear-gradient()`, `radial-gradient()` as background-image values
+- [x] ~~Implement CSS `border-radius`~~ (2026-04-04 sprint partial) — ParseBorderRadius parses 1-4 values; DrawBorder now uses rounded corner arcs with filled quarter circles; DrawRoundedRect helper added for background with rounded corners
 - [x] ~~Implement CSS `box-shadow`~~ (2026-04-04 sprint) — parse box-shadow value; draw shadow rectangle offset from content box
 - [x] ~~Implement CSS `text-align`~~ (2026-04-04 sprint) — stored in style props; DrawText respects alignment offset
 - [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration not yet rendered (storage only)
@@ -239,7 +248,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🟡 Medium (Content & Rendering Quality)
 
-- [ ] **Implement `<img>` actual rendering** — fetch image URL, decode JPEG/PNG/WebP/GIF, display at correct size within content box
+- [x] ~~Implement `<img>` actual rendering~~ (2026-04-04 sprint) — ImageBox type added; DrawImage shows alt text / broken image icon; img elements get 150x150 default size; image scaling infrastructure ready (loadImage is stub)
 - [ ] **Implement CSS `background-image`** — background images on elements (URL-based)
 - [ ] **Implement CSS gradients** — `linear-gradient()`, `radial-gradient()` as background-image values
 - [ ] **Implement CSS `clip-path`** — masking shapes on elements
@@ -384,3 +393,50 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Reduce string allocations in tokenizer** — use []byte/[]rune pooling
 - [ ] **Use sync.Pool for Node allocation** — reduce GC pressure in hot path
 - [ ] **Add error type hierarchy** — `ParseError`, `FetchError`, `LayoutError` with stack traces
+
+## 🟠 Low (Canvas/Drawing Improvements)
+
+- [ ] **Implement `DrawRoundedRect` for background with border-radius** — currently border-radius draws square corners; bg must clip to rounded shape
+- [ ] **Implement actual `background-image` fetching and decoding** — download image URL, decode JPEG/PNG/GIF/WebP, draw to canvas
+- [ ] **Implement `background-repeat` drawing** — tile background image across element (repeat, repeat-x, repeat-y, space, round)
+- [ ] **Implement `background-position` drawing** — offset background image from element edge
+- [ ] **Implement `background-size` drawing** — scale background image to specified dimensions (cover, contain, explicit W H)
+- [ ] **Implement `linear-gradient()` parsing and drawing** — draw gradient from color-stop list
+- [ ] **Implement `radial-gradient()` parsing and drawing** — draw radial gradient with center/radius parameters
+- [ ] **Implement `box-shadow` multiple shadows** — `box-shadow` can have multiple comma-separated shadows
+- [ ] **Implement `text-shadow` multiple shadows** — multiple shadows on text via comma separation
+- [ ] **Implement `outline` drawing** — currently outline is stored but never drawn; draw outside border box
+- [ ] **Implement `opacity` on individual draw calls** — apply alpha blending per element not just whole box
+
+## 🟠 Low (Form Elements)
+
+- [ ] **Implement `<button>` visual rendering** — styled button with border, padding, text
+- [ ] **Implement `<select>` dropdown (visual)** — show select as a bordered box with current option text
+- [ ] **Implement `<textarea>` visual rendering** — bordered multiline text area
+- [ ] **Implement `<label>` association** — label visually linked to associated form element
+- [ ] **Implement form focus styling** — `:focus` pseudo-class on inputs/buttons shows outline
+
+## 🟠 Low (Advanced CSS)
+
+- [ ] **Implement CSS `calc()` function** — `width: calc(100% - 20px)` in CSS value parsing and layout
+- [ ] **Implement CSS `clamp()` function** — `width: clamp(100px, 50%, 300px)` clamping values
+- [ ] **Implement CSS `min()` and `max()` functions** — `width: min(100px, 50%)`
+- [ ] **Implement CSS `counter()` and `counters()`** — automatic numbering for lists and headings
+- [ ] **Implement CSS `attr()` function** — `content: attr(data-label)` reading attribute values
+
+## 🟠 Low (HTML Elements)
+
+- [ ] **Implement `<colgroup>` and `<col>`** — column grouping for table column widths
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — proper table section rendering order
+- [ ] **Implement `<td colspan>` and `<td rowspan>`** — cell spanning for complex tables
+- [ ] **Implement `<figure>` and `<figcaption>`** — figure with caption rendered below/above
+- [ ] **Implement `<dialog>` modal** — dialog element with backdrop
+- [ ] **Implement `<slot>` and shadow DOM** — web component slot projection
+
+## 🟠 Low (Performance)
+
+- [ ] **Lazy image decoding** — don't decode image data until visible in viewport
+- [ ] **Streaming HTML parse** — for large pages, parse HTML incrementally without buffering all
+- [ ] **Incremental layout** — layout visible viewport first, then off-screen content
+- [ ] **CSS selector indexing** — build index of elements by class/id/tag for fast selector matching
+- [ ] **Text measurement caching** — cache Ebitengine text measurement results per font/size/text combo

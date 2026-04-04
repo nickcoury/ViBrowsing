@@ -32,7 +32,12 @@ func Parse(sheet string) []Rule {
 
 		// Skip @-rules for now
 		if sheet[i] == '@' {
-			i = skipUntil(sheet, i, '{')
+			// @import url(foo.css); — find semicolon
+			if idx := strings.Index(sheet[i:], ";"); idx >= 0 {
+				i += idx + 1
+			} else {
+				break
+			}
 			i = skipBlock(sheet, i)
 			continue
 		}
@@ -121,7 +126,7 @@ func parseDeclarations(sheet string, start int) ([]Declaration, int) {
 			}
 		}
 
-		if prop != "" && value != "" {
+		if prop != "" {
 			decls = append(decls, Declaration{Property: prop, Value: value})
 		}
 

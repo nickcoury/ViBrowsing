@@ -238,7 +238,6 @@ func (t *Tokenizer) readAttributes() []Attribute {
 			c := t.input[t.pos]
 			if quote != 0 {
 				if c == quote {
-					t.pos++
 					break
 				}
 			} else {
@@ -249,7 +248,11 @@ func (t *Tokenizer) readAttributes() []Attribute {
 			t.pos++
 		}
 		attrs[len(attrs)-1].Value = string(t.input[valStart:t.pos])
-		if quote != 0 && t.pos < len(t.input) {
+		if quote != 0 && t.pos < len(t.input) && t.input[t.pos] == quote {
+			t.pos++ // skip closing quote
+		}
+		// Skip any trailing whitespace before the next attribute
+		for t.pos < len(t.input) && (t.input[t.pos] == ' ' || t.input[t.pos] == '\t' || t.input[t.pos] == '\n' || t.input[t.pos] == '\r' || t.input[t.pos] == '\f') {
 			t.pos++
 		}
 	}
@@ -257,7 +260,6 @@ func (t *Tokenizer) readAttributes() []Attribute {
 }
 
 // namedEntities maps HTML named entity names to their decoded runes.
-// Only the ones that can't be confused with other characters are included.
 var namedEntities = map[string]rune{
 	"amp":  '&',
 	"lt":   '<',

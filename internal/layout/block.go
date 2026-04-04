@@ -290,6 +290,40 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		contentWidth = 800
 	}
 
+	// Handle <br> element - forced line break
+	if box.Type == InlineBox && box.Node != nil && box.Node.TagName == "br" {
+		fontSize := css.ParseLength(box.Style["font-size"]).Value
+		if fontSize == 0 {
+			fontSize = 16
+		}
+		lineHeight := css.ParseLength(box.Style["line-height"]).Value
+		if lineHeight == 0 {
+			lineHeight = 1.2
+		}
+		lineHeightPx := lineHeight * fontSize
+
+		ctx.X = ctx.X
+		ctx.Y += lineHeightPx
+		// Flush previous line box
+		applyVerticalAlignments(ctx)
+		ctx.LineBoxBaseline = 0
+		ctx.LineBoxMaxAscent = 0
+		ctx.LineBoxMaxDescent = 0
+		ctx.LineBoxStartY = ctx.Y
+		ctx.LineBoxChildren = nil
+		box.ContentW = 0
+		box.ContentH = 0
+		return
+	}
+
+	// Handle <wbr> element - zero-width break opportunity
+	if box.Type == InlineBox && box.Node != nil && box.Node.TagName == "wbr" {
+		// wbr is a zero-width break point - mark it but don't force break
+		box.ContentW = 0
+		box.ContentH = 0
+		return
+	}
+
 	if box.Type == TextBox {
 		text := box.Node.Data
 		whiteSpace := box.Style["white-space"]

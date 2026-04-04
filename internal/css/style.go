@@ -74,6 +74,50 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"box-shadow":      "none",
 		"cursor":          "auto",
 		"transform":       "none",
+		"text-shadow":     "none",
+	}
+
+	// Element-specific default styles (HTML5 user agent defaults)
+	// These are overridden by any matching CSS rules
+	switch tagName {
+	case "strong", "b", "th":
+		props["font-weight"] = "bold"
+	case "em", "i", "cite", "var":
+		props["font-style"] = "italic"
+	case "code", "kbd", "samp", "pre":
+		props["font-family"] = "monospace"
+		if tagName == "pre" {
+			props["white-space"] = "pre"
+		}
+	case "blockquote":
+		props["display"] = "block"
+		props["margin-left"] = "40px"
+		props["margin-right"] = "40px"
+		props["font-style"] = "italic"
+	case "address":
+		props["display"] = "block"
+		props["font-style"] = "italic"
+	case "header", "footer", "nav", "section", "article", "aside", "main", "figure", "figcaption", "details", "summary":
+		props["display"] = "block"
+	case "noscript":
+		props["display"] = "block"
+	case "hr":
+		props["display"] = "block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["margin-top"] = "8px"
+		props["margin-bottom"] = "8px"
+		props["height"] = "1px" // Use height for hr thickness since it's a void element
+	case "input":
+		props["display"] = "inline-block"
+		props["border-width"] = "1px"
+		props["border-style"] = "solid"
+		props["border-color"] = "gray"
+		props["padding-top"] = "2px"
+		props["padding-bottom"] = "2px"
+		props["padding-left"] = "4px"
+		props["padding-right"] = "4px"
 	}
 
 	// Apply rules in order (later rules win for same specificity)
@@ -411,5 +455,9 @@ func applyDecl(props map[string]string, decl Declaration) {
 		}
 	case "box-shadow":
 		props["box-shadow"] = value
+	case "text-shadow":
+		props["text-shadow"] = value
+	case "background-image":
+		props["background-image"] = value
 	}
 }

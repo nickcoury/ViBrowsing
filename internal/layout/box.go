@@ -19,6 +19,7 @@ const (
 	PositionedBox
 	ImageBox
 	ListItemBox
+	HorizontalRuleBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -194,14 +195,19 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		"ul", "ol", "table", "tr", "form", "pre",
 		"blockquote", "address", "article", "aside",
 		"footer", "header", "main", "nav", "section",
-		"figure", "figcaption":
+		"figure", "figcaption", "noscript", "details",
+		"summary":
 		box.Type = BlockBox
-	case "span", "a", "strong", "em", "b", "i", "code", "small":
+	case "span", "a", "strong", "em", "b", "i", "code", "small", "br", "wbr", "cite":
 		box.Type = InlineBox
 	case "img":
 		box.Type = ImageBox
 	case "li":
 		box.Type = ListItemBox
+	case "input":
+		box.Type = InlineBox
+	case "hr":
+		box.Type = HorizontalRuleBox
 	}
 
 	// Flex container

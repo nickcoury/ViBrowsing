@@ -206,6 +206,25 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	paddingW := contentW - paddingLeft - paddingRight
 	paddingH := contentH - paddingTop - paddingBottom
 
+	// Background image (placeholder - draw a colored rectangle)
+	bgImage := box.Style["background-image"]
+	if bgImage != "" && bgImage != "none" && strings.HasPrefix(bgImage, "url(") {
+		// Extract URL from url(...) - placeholder colored rect
+		start := strings.Index(bgImage, "(")
+		end := strings.LastIndex(bgImage, ")")
+		if start > 0 && end > start {
+			// Just draw a light blue placeholder for now
+			placeholderColor := css.Color{R: 200, G: 220, B: 240, A: 200}
+			if opacity < 1 {
+				placeholderColor = applyOpacity(placeholderColor, opacity)
+			}
+			// Draw placeholder over the padding area
+			if paddingW > 0 && paddingH > 0 {
+				c.FillRect(paddingX, paddingY, paddingW, paddingH, placeholderColor)
+			}
+		}
+	}
+
 	// Use rounded rect if border-radius is set
 	if borderRadiusPx.Value > 0 && borderRadiusPx.Unit == css.UnitPx {
 		cornerR := int(borderRadiusPx.Value)
@@ -315,9 +334,19 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.DrawText(box)
 	}
 
+	// Horizontal rule
+	if !isHidden && box.Type == layout.HorizontalRuleBox {
+		c.DrawHorizontalRule(box)
+	}
+
 	// Image content
 	if !isHidden && box.Type == layout.ImageBox && box.Node != nil {
 		c.DrawImage(box)
+	}
+
+	// Input element
+	if !isHidden && box.Type == layout.InlineBox && box.Node != nil && box.Node.TagName == "input" {
+		c.DrawInput(box)
 	}
 
 	// Children (only if not hidden)
@@ -578,6 +607,25 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	currentY := float64(y)
 	isPre := box.Style["white-space"] == "pre" || box.Style["white-space"] == "pre-wrap"
 
+	// Parse text-shadow
+	shadowColor := textColor
+	shadowX := 0
+	shadowY := 0
+	hasTextShadow := false
+	if shadow := box.Style["text-shadow"]; shadow != "" && shadow != "none" {
+		hasTextShadow = true
+		parts := strings.Fields(shadow)
+		if len(parts) >= 2 {
+			shadowX = int(css.ParseLength(parts[0]).Value)
+			shadowY = int(css.ParseLength(parts[1]).Value)
+			if len(parts) >= 4 {
+				shadowColor = css.ParseColor(parts[3])
+			} else if len(parts) >= 3 {
+				shadowColor = css.ParseColor(parts[2])
+			}
+		}
+	}
+
 	for i := 0; i < len(text); i++ {
 		ch := rune(text[i])
 
@@ -632,6 +680,12 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		if italicSlant > 1 {
 			charH = fontSize * italicSlant
 		}
+
+		// Draw text-shadow first (behind the text)
+		if hasTextShadow {
+			c.FillRect(int(currentX)+shadowX, int(currentY)+shadowY, int(cw), int(charH), shadowColor)
+		}
+
 		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
 		currentX += cw + extraWord
 	}
@@ -820,4 +874,75 @@ func (c *Canvas) DrawListMarker(box *layout.Box) {
 // ToImage returns the underlying *image.RGBA.
 func (c *Canvas) ToImage() *image.RGBA {
 	return c.Pixels
+}
+
+// DrawHorizontalRule renders an <hr> element as a thin horizontal line.
+func (c *Canvas) DrawHorizontalRule(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	if w <= 0 {
+		w = 200
+	}
+
+	borderColor := css.ParseColor(box.Style["border-color"])
+	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
+	if borderWidth <= 0 {
+		borderWidth = 1
+	}
+
+	// Draw the line
+	c.FillRect(x, y, w, borderWidth, borderColor)
+}
+
+// DrawInput renders an <input> element as a rectangle with border.
+func (c *Canvas) DrawInput(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 150
+		box.ContentW = 150
+	}
+	if h <= 0 {
+		h = 20
+		box.ContentH = 20
+	}
+
+	borderColor := css.ParseColor(box.Style["border-color"])
+	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
+	if borderWidth <= 0 {
+		borderWidth = 1
+	}
+
+	bgColor := css.ParseColor(box.Style["background"])
+	if bgColor.A == 0 {
+		bgColor = css.Color{R: 255, G: 255, B: 255, A: 255}
+	}
+
+	// Draw background
+	c.FillRect(x, y, w, h, bgColor)
+
+	// Draw border
+	c.DrawBorder(x, y, w, h, borderWidth, borderColor)
+
+	// Draw placeholder text if present
+	placeholder := ""
+	if box.Node != nil {
+		placeholder = box.Node.GetAttribute("placeholder")
+	}
+	if placeholder != "" {
+		textColor := css.Color{R: 169, G: 169, B: 169, A: 255}
+		fontSize := 14.0
+		charWidth := fontSize * 0.6
+		maxChars := w / int(charWidth)
+		if maxChars > len(placeholder) {
+			maxChars = len(placeholder)
+		}
+		for i := 0; i < maxChars; i++ {
+			c.FillRect(x+int(float64(i)*charWidth)+2, y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
+		}
+	}
 }
