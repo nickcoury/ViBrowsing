@@ -16,33 +16,138 @@ type LayoutContext struct {
 	FloatLeftEdge  float64 // right edge of the rightmost left-float (0 if none)
 	FloatRightEdge float64 // left edge of the leftmost right-float (Width if none)
 	FloatBottom    float64 // lowest bottom edge of all floats in current line
+
+	// Line box tracking for vertical-align
+	LineBoxBaseline float64 // Y baseline for current line box (relative to ctx.Y)
+	LineBoxMaxAscent float64 // max height above baseline
+	LineBoxMaxDescent float64 // max height below baseline
+	LineBoxStartY float64 // Y where current line box started
+	LineBoxChildren [] *Box // children in current line box for deferred vertical-align
 }
 
 // LayoutBlock performs block-level layout on a box tree.
 // Returns the total height consumed.
 func LayoutBlock(root *Box, containingWidth float64) {
 	ctx := &LayoutContext{
-		Width: containingWidth,
-		X:     0,
-		Y:     0,
+		Width:  containingWidth,
+		X:      0,
+		Y:      0,
+		FloatRightEdge: containingWidth,
 	}
 
 	layoutChildren(root, ctx)
 }
 
+// applyVerticalAlignments positions all children in the current line box
+// according to their vertical-align values, relative to the baseline.
+func applyVerticalAlignments(ctx *LayoutContext) {
+	if ctx.LineBoxChildren == nil || len(ctx.LineBoxChildren) == 0 {
+		return
+	}
+
+	baseline := ctx.LineBoxStartY + ctx.LineBoxMaxAscent
+
+	for _, child := range ctx.LineBoxChildren {
+		align := child.Style["vertical-align"]
+		childH := child.ContentH
+		childAscent := childH * 0.75 // approximate text ascent ratio
+		_ = childH * 0.25 // childDescent kept for future use
+
+		switch align {
+		case "top":
+			// Align to top of line box
+			child.ContentY = ctx.LineBoxStartY
+		case "bottom":
+			// Align to bottom of line box
+			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent - childH
+		case "middle":
+			// Align to middle of line box
+			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent - childH/2
+		case "text-top":
+			// Align to top of parent's text
+			child.ContentY = ctx.LineBoxStartY
+		case "text-bottom":
+			// Align to bottom of parent's text
+			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent - childH
+		case "sub":
+			// Subscript: lower than baseline
+			subscriptOffset := childH * 0.3
+			child.ContentY = baseline + subscriptOffset - childH + childH*0.1
+		case "super":
+			// Superscript: higher than baseline
+			supOffset := childH * 0.4
+			child.ContentY = baseline - supOffset
+		case "baseline", "":
+			// Default: align baseline
+			child.ContentY = baseline - childAscent
+		default:
+			// Check for length value like "10px" or "1em"
+			l := css.ParseLength(align)
+			if l.Unit == css.UnitPx || l.Unit == css.UnitEm || l.Unit == css.UnitRem {
+				offset := l.Value
+				if l.Unit == css.UnitEm {
+					offset *= 16 // assume 16px font-size
+				}
+				child.ContentY = baseline - childH*0.75 + offset
+			} else {
+				child.ContentY = baseline - childAscent
+			}
+		}
+	}
+}
+
 func layoutChildren(box *Box, ctx *LayoutContext) {
+	// Track line box state for vertical-align
+	ctx.LineBoxBaseline = 0
+	ctx.LineBoxMaxAscent = 0
+	ctx.LineBoxMaxDescent = 0
+	ctx.LineBoxStartY = ctx.Y
+	ctx.LineBoxChildren = nil
+
 	for _, child := range box.Children {
 		switch child.Type {
 		case BlockBox:
+			// Flush pending line box before block child
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
 			layoutBlockChild(child, ctx)
 		case FlexBox:
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
 			layoutFlexContainer(child, ctx)
 		case PositionedBox:
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
 			layoutPositionedChild(child, ctx)
 		case InlineBox, TextBox:
+			prevY := ctx.Y
 			layoutInlineChild(child, box, ctx)
+			// Check if we wrapped to a new line
+			if ctx.Y > prevY {
+				// New line started — flush previous line box
+				applyVerticalAlignments(ctx)
+				ctx.LineBoxBaseline = 0
+				ctx.LineBoxMaxAscent = 0
+				ctx.LineBoxMaxDescent = 0
+				ctx.LineBoxStartY = ctx.Y
+				ctx.LineBoxChildren = nil
+			}
 		}
 	}
+	// Flush any remaining line box
+	applyVerticalAlignments(ctx)
 }
 
 // layoutFloatChild positions a floated element.
@@ -201,7 +306,6 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 
 		x := ctx.X
 		startX := x
-		startY := ctx.Y
 		isPre := whiteSpace == "pre" || whiteSpace == "pre-wrap"
 		wrapPrevWord := false
 
@@ -256,15 +360,22 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 
 		// Set box to cover the entire text range
 		box.ContentX = startX
-		box.ContentY = startY
+		box.ContentY = ctx.LineBoxStartY
 		box.ContentW = x - startX
 		if box.ContentW < charWidth {
 			box.ContentW = charWidth
 		}
-		box.ContentH = ctx.Y + lineHeightPx - startY
-		if box.ContentH < lineHeightPx {
-			box.ContentH = lineHeightPx
+		box.ContentH = lineHeightPx
+
+		// Track line box metrics
+		if box.ContentH > ctx.LineBoxMaxAscent+ctx.LineBoxMaxDescent {
+			// New total line height — adjust
+			extra := box.ContentH - (ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent)
+			ctx.LineBoxMaxDescent += extra
 		}
+
+		// Add to line box
+		ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
 
 		// Advance cursor past the text
 		if x > ctx.X {
@@ -276,10 +387,28 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		marginRight := css.ParseLength(box.Style["margin-right"]).Value
 		width := computeWidth(box, ctx.Width)
 
+		// Check if we need to wrap first
+		totalWidth := marginLeft + width + marginRight
+		if ctx.X+totalWidth > contentWidth && ctx.X > 0 {
+			// Wrap to next line
+			ctx.Y += ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent
+			ctx.X = 0
+			// Flush previous line box
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
+		}
+
 		box.ContentX = ctx.X + marginLeft
-		box.ContentY = ctx.Y
+		box.ContentY = ctx.LineBoxStartY
 		box.ContentW = width
 		box.ContentH = computeHeight(box, nil)
+
+		// Add to line box for vertical-align
+		ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
 
 		ctx.X += marginLeft + width + marginRight
 	}

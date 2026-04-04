@@ -42,7 +42,7 @@
 - [x] ~~Implement CSS `text-align`~~ (2026-04-04 sprint) — stored in style props; DrawText respects alignment offset
 - [x] ~~Implement CSS `font-weight`, `font-style`, `text-decoration`~~ (2026-04-04 sprint) — stored in style props; DrawText uses font-weight for char width and font-style for italic slant; text-decoration not yet rendered (storage only)
 - [x] ~~Implement CSS `line-height`~~ (2026-04-04 sprint) — already worked; ParseLength handles unitless values
-- [ ] **Implement CSS `vertical-align`** — for inline and table cells: top/middle/bottom/baseline/sub/super
+- [x] ~~Implement CSS `vertical-align`~~ (2026-04-04 sprint) — top/middle/bottom/baseline/sub/super and length values; LayoutContext tracks LineBoxBaseline/MaxAscent/MaxDescent for deferred vertical-align application
 - [x] ~~Implement CSS `opacity`~~ (2026-04-04 sprint) — opacity value stored in style; DrawBox applies applyOpacity() to background and border colors; opacity 0-1 range clamped
 - [ ] **Implement CSS `transform`** — rotate, scale, translate (2D transforms)
 - [ ] **Implement CSS `@media` queries** — responsive design breakpoints
