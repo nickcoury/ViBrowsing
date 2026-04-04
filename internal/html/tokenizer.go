@@ -15,9 +15,9 @@ const (
 
 // Token represents an HTML token.
 type Token struct {
-	Type       TokenType
-	Data      string
-	TagName   string
+	Type        TokenType
+	Data       string
+	TagName    string
 	Attributes []Attribute
 	SelfClosing bool
 }
@@ -28,12 +28,11 @@ type Attribute struct {
 	Value string
 }
 
-// Tokenizer is an HTML5 tokenizer (simplified).
+// Tokenizer is an HTML5 tokenizer.
 type Tokenizer struct {
-	input       []rune
-	pos         int
-	current     Token
-	charBuff    string
+	input    []rune
+	pos      int
+	done     bool
 }
 
 // NewTokenizer creates a new tokenizer.
@@ -43,150 +42,157 @@ func NewTokenizer(input []byte) *Tokenizer {
 
 // Next returns the next token, or nil at end of input.
 func (t *Tokenizer) Next() *Token {
-	// If there's buffered character data, emit it first
-	if t.charBuff != "" {
-		data := t.charBuff
-		t.charBuff = ""
-		return &Token{Type: TokenCharacter, Data: data}
-	}
+	for !t.done && t.pos < len(t.input) {
+		c := t.input[t.pos]
 
-	for t.pos < len(t.input) {
-		t.step()
-		// After each step, flush buffered character data
-		if t.charBuff != "" {
-			data := t.charBuff
-			t.charBuff = ""
-			return &Token{Type: TokenCharacter, Data: data}
-		}
-		if t.current.Type != 0 {
-			token := t.current
-			t.current = Token{}
-			return &token
-		}
-	}
+		switch {
+		// Text: accumulate until '<'
+		case c != '<':
+			start := t.pos
+			for t.pos < len(t.input) && t.input[t.pos] != '<' {
+				t.pos++
+			}
+			return &Token{Type: TokenCharacter, Data: decodeEntities(string(t.input[start:t.pos]))}
 
-	// At end of input: flush remaining buffer
-	if t.charBuff != "" {
-		data := t.charBuff
-		t.charBuff = ""
-		return &Token{Type: TokenCharacter, Data: data}
+		// Comment: <!-- ... -->
+		case t.match("<!"):
+			t.pos += 2
+			if t.match("--") {
+				t.pos += 2
+				start := t.pos
+				for t.pos < len(t.input) {
+					if t.match("-->") {
+						data := string(t.input[start:t.pos])
+						t.pos += 3
+						return &Token{Type: TokenComment, Data: data}
+					}
+					t.pos++
+				}
+				// EOF in comment
+				return &Token{Type: TokenComment, Data: string(t.input[start:])}
+			}
+			// Bogus comment: consume until '>'
+			for t.pos < len(t.input) && t.input[t.pos] != '>' {
+				t.pos++
+			}
+			if t.pos < len(t.input) {
+				t.pos++
+			}
+			continue
+
+		// End tag: </name>
+		case t.match("</"):
+			t.pos += 2
+			tagName := t.readTagName()
+			// Consume the '>' after the tag name
+			if t.pos < len(t.input) && t.input[t.pos] == '>' {
+				t.pos++
+			}
+			// Skip synthetic root end tags: parser bootstraps html/head/body
+			switch strings.ToLower(tagName) {
+			case "html", "head", "body":
+				continue
+			}
+			return &Token{Type: TokenEndTag, TagName: strings.ToLower(tagName)}
+
+		// DOCTYPE: <!DOCTYPE ...>
+		case t.match("<!DOCTYPE") || t.match("<!doctype"):
+			t.pos += 9
+			// Consume until '>'
+			for t.pos < len(t.input) && t.input[t.pos] != '>' {
+				t.pos++
+			}
+			if t.pos < len(t.input) {
+				t.pos++ // consume '>'
+			}
+			// Skip following whitespace
+			for t.pos < len(t.input) {
+				c := t.input[t.pos]
+				if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' {
+					t.pos++
+				} else {
+					break
+				}
+			}
+			// Skip synthetic root elements: parser bootstraps html/head/body
+			// This handles: <!DOCTYPE ...>\n<html> — skip the html that follows DOCTYPE
+			if t.match("<html") || t.match("<HTML") {
+				t.skipTag(); continue
+			}
+			if t.match("<head") || t.match("<HEAD") {
+				t.skipTag(); continue
+			}
+			if t.match("<body") || t.match("<BODY") {
+				t.skipTag(); continue
+			}
+			if t.match("</html") || t.match("</HTML") {
+				t.skipTag(); continue
+			}
+			if t.match("</head") || t.match("</HEAD") {
+				t.skipTag(); continue
+			}
+			if t.match("</body") || t.match("</BODY") {
+				t.skipTag(); continue
+			}
+			continue
+
+		// Start tag: <name ...>
+		case t.match("<"):
+			t.pos++
+			tagName := t.readTagName()
+			tagNameLower := strings.ToLower(tagName)
+			attrs := t.readAttributes()
+			selfClosing := false
+			if t.pos < len(t.input) && t.input[t.pos] == '/' {
+				selfClosing = true
+				t.pos++
+			}
+			if t.pos < len(t.input) && t.input[t.pos] == '>' {
+				t.pos++
+			}
+			// Skip synthetic root elements: parser bootstraps html/head/body
+			// These tags are created by the parser; don't emit tokens for them
+			switch tagNameLower {
+			case "html", "head", "body":
+				continue
+			}
+			return &Token{
+				Type:        TokenStartTag,
+				TagName:     tagNameLower,
+				Attributes:  attrs,
+				SelfClosing: selfClosing,
+			}
+
+		default:
+			t.pos++
+		}
 	}
 
 	return nil
 }
 
-// step advances the state machine by one step.
-func (t *Tokenizer) step() {
-	if t.pos >= len(t.input) {
-		return
-	}
-	c := t.input[t.pos]
-
-	switch {
-	// dataState
-	case t.current.Type == 0 && t.current.TagName == "" && !strings.HasPrefix(string(t.input[t.pos:]), "<"):
-		if c == '<' || c == 0 {
-			return
-		}
-		t.charBuff += string(c)
-		t.pos++
-
-	case strings.HasPrefix(string(t.input[t.pos:]), "<!"):
-		t.pos += 2
-		t.handleMarkupDeclaration()
-
-	case strings.HasPrefix(string(t.input[t.pos:]), "</"):
-		t.pos += 2
-		t.current = Token{Type: TokenEndTag}
-		t.tagName()
-
-	case strings.HasPrefix(string(t.input[t.pos:]), "<"):
-		t.pos++
-		t.current = Token{Type: TokenStartTag}
-		t.tagName()
-
-	default:
-		t.pos++
-	}
+// match checks if the input at current position starts with s.
+func (t *Tokenizer) match(s string) bool {
+	input := string(t.input[t.pos:])
+	return strings.HasPrefix(input, s)
 }
 
-func (t *Tokenizer) handleMarkupDeclaration() {
-	remaining := string(t.input[t.pos:])
-	if strings.HasPrefix(remaining, "DOCTYPE") || strings.HasPrefix(remaining, "doctype") {
-		t.pos += 8 // len("DOCTYPE")
-		// Consume until '>'
-		for t.pos < len(t.input) && t.input[t.pos] != '>' {
-			t.pos++
-		}
-		if t.pos < len(t.input) {
-			t.pos++ // consume '>'
-		}
-		t.current = Token{Type: TokenDOCTYPE, TagName: "html"}
-		return
-	}
-	if strings.HasPrefix(remaining, "--") {
-		t.pos += 2
-		t.charBuff = ""
-		// Consume until -->
-		end := strings.Index(string(t.input[t.pos:]), "-->")
-		if end >= 0 {
-			t.current = Token{Type: TokenComment, Data: string(t.input[t.pos : t.pos+end])}
-			t.pos += end + 3
-		} else {
-			t.current = Token{Type: TokenComment, Data: string(t.input[t.pos:])}
-			t.pos = len(t.input)
-		}
-		return
-	}
-	// Bogus comment
-	end := strings.Index(string(t.input[t.pos:]), ">")
-	if end >= 0 {
-		t.current = Token{Type: TokenComment, Data: string(t.input[t.pos : t.pos+end])}
-		t.pos += end + 1
-	} else {
-		t.current = Token{Type: TokenComment, Data: string(t.input[t.pos:])}
-		t.pos = len(t.input)
-	}
-}
-
-func (t *Tokenizer) tagName() {
+// readTagName reads a tag name starting at the current position.
+func (t *Tokenizer) readTagName() string {
 	start := t.pos
 	for t.pos < len(t.input) {
 		c := t.input[t.pos]
-		if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' {
-			break
-		}
-		if c == '>' || c == '/' {
+		if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' || c == '>' || c == '/' {
 			break
 		}
 		t.pos++
 	}
-	t.current.TagName = strings.ToLower(string(t.input[start:t.pos]))
-
-	// Self-closing: <tag ... />
-	if t.pos < len(t.input) && t.input[t.pos] == '/' {
-		t.current.SelfClosing = true
-		t.pos++
-	}
-
-	// End of tag
-	if t.pos < len(t.input) && t.input[t.pos] == '>' {
-		t.pos++
-		return
-	}
-
-	// Parse attributes
-	if t.pos < len(t.input) && t.input[t.pos] != '>' {
-		t.attrs()
-	}
-
-	// Consume '>'
-	if t.pos < len(t.input) && t.input[t.pos] == '>' {
-		t.pos++
-	}
+	return string(t.input[start:t.pos])
 }
 
-func (t *Tokenizer) attrs() {
+// readAttributes reads zero or more attributes after a tag name.
+func (t *Tokenizer) readAttributes() []Attribute {
+	var attrs []Attribute
 	for t.pos < len(t.input) {
 		c := t.input[t.pos]
 		if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' {
@@ -194,10 +200,10 @@ func (t *Tokenizer) attrs() {
 			continue
 		}
 		if c == '>' || c == '/' {
-			return
+			break
 		}
 		// Attribute name
-		start := t.pos
+		nameStart := t.pos
 		for t.pos < len(t.input) {
 			c := t.input[t.pos]
 			if c == '=' || c == ' ' || c == '\n' || c == '\t' || c == '\f' || c == '>' || c == '/' {
@@ -205,48 +211,164 @@ func (t *Tokenizer) attrs() {
 			}
 			t.pos++
 		}
-		attr := Attribute{Key: string(t.input[start:t.pos])}
-		t.current.Attributes = append(t.current.Attributes, attr)
+		attr := Attribute{Key: string(t.input[nameStart:t.pos])}
+		attrs = append(attrs, attr)
 
-		// Maybe =
-		for t.pos < len(t.input) && t.input[t.pos] == ' ' || t.pos < len(t.input) && t.input[t.pos] == '\t' || t.pos < len(t.input) && t.input[t.pos] == '\n' {
+		// Skip whitespace before =
+		for t.pos < len(t.input) && (t.input[t.pos] == ' ' || t.input[t.pos] == '\t' || t.input[t.pos] == '\n') {
 			t.pos++
 		}
 		if t.pos < len(t.input) && t.input[t.pos] == '=' {
 			t.pos++
-			// Attribute value
-			for t.pos < len(t.input) && (t.input[t.pos] == ' ' || t.input[t.pos] == '\t' || t.input[t.pos] == '\n' || t.input[t.pos] == '\r' || t.input[t.pos] == '\f') {
-				t.pos++
+		} else {
+			continue
+		}
+		// Skip whitespace after =
+		for t.pos < len(t.input) && (t.input[t.pos] == ' ' || t.input[t.pos] == '\t' || t.input[t.pos] == '\n' || t.input[t.pos] == '\r' || t.input[t.pos] == '\f') {
+			t.pos++
+		}
+		// Attribute value
+		var quote rune
+		if t.pos < len(t.input) && (t.input[t.pos] == '"' || t.input[t.pos] == '\'') {
+			quote = t.input[t.pos]
+			t.pos++
+		}
+		valStart := t.pos
+		for t.pos < len(t.input) {
+			c := t.input[t.pos]
+			if quote != 0 {
+				if c == quote {
+					t.pos++
+					break
+				}
+			} else {
+				if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' || c == '>' {
+					break
+				}
 			}
-			var quote rune
-			if t.pos < len(t.input) && (t.input[t.pos] == '"' || t.input[t.pos] == '\'') {
-				quote = t.input[t.pos]
-				t.pos++
+			t.pos++
+		}
+		attrs[len(attrs)-1].Value = string(t.input[valStart:t.pos])
+		if quote != 0 && t.pos < len(t.input) {
+			t.pos++
+		}
+	}
+	return attrs
+}
+
+// namedEntities maps HTML named entity names to their decoded runes.
+// Only the ones that can't be confused with other characters are included.
+var namedEntities = map[string]rune{
+	"amp":  '&',
+	"lt":   '<',
+	"gt":   '>',
+	"quot": '"',
+	"apos": '\'',
+	"nbsp": '\u00A0', // non-breaking space
+	"ndash": '\u2013',
+	"mdash": '\u2014',
+	"lsquo": '\u2018',
+	"rsquo": '\u2019',
+	"ldquo": '\u201C',
+	"rdquo": '\u201D',
+	"hellip": '\u2026',
+	"copy":  '\u00A9',
+	"reg":   '\u00AE',
+	"trade": '\u2122',
+	"deg":   '\u00B0',
+	"plusmn": '\u00B1',
+	"times": '\u00D7',
+	"divide": '\u00F7',
+	"frac12": '\u00BD',
+	"frac14": '\u00BC',
+	"frac34": '\u00BE',
+}
+
+// decodeEntities decodes HTML named and numeric character references in a string.
+// Handles: &name; &#nnn; &#xhh;
+func decodeEntities(s string) string {
+	var result []rune
+	runes := []rune(s)
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '&' {
+			// Collect the entity name
+			start := i + 1
+			end := start
+			for end < len(runes) && end < start+10 {
+				if runes[end] == ';' {
+					break
+				}
+				end++
 			}
-			valStart := t.pos
-			for t.pos < len(t.input) {
-				c := t.input[t.pos]
-				if quote != 0 {
-					if c == quote {
-						t.pos++
-						break
+			if end < len(runes) && runes[end] == ';' {
+				entity := string(runes[start:end])
+				if runes[start] == '#' {
+					// Numeric reference
+					numStr := entity[1:] // remove #
+					base := 10
+					if len(numStr) > 1 && numStr[0] == 'x' {
+						base = 16
+						numStr = numStr[1:]
+					}
+					if val, err := parseUint(numStr, base); err == nil && val > 0 && val < 0x10FFFF {
+						result = append(result, rune(val))
+						i = end + 1
+						continue
 					}
 				} else {
-					if c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' || c == '>' {
-						break
+					// Named entity
+					if r, ok := namedEntities[entity]; ok {
+						result = append(result, r)
+						i = end + 1
+						continue
 					}
 				}
-				t.pos++
 			}
-			t.current.Attributes[len(t.current.Attributes)-1].Value = string(t.input[valStart:t.pos])
-			if quote != 0 && t.pos < len(t.input) {
-				t.pos++ // consume closing quote
-			}
+			// Not a valid entity, emit '&' as-is
+			result = append(result, '&')
+			i++
+		} else {
+			result = append(result, runes[i])
+			i++
 		}
+	}
+	return string(result)
+}
+
+func parseUint(s string, base int) (uint64, error) {
+	var val uint64
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		var digit uint64
+		switch {
+		case c >= '0' && c <= '9':
+			digit = uint64(c - '0')
+		case c >= 'a' && c <= 'f' && base == 16:
+			digit = uint64(c - 'a' + 10)
+		case c >= 'A' && c <= 'F' && base == 16:
+			digit = uint64(c - 'A' + 10)
+		default:
+			return 0, nil
+		}
+		val = val*uint64(base) + digit
+	}
+	return val, nil
+}
+
+// skipTag skips a full tag including attributes and closing >.
+// Used when we want to consume a tag without emitting a token.
+func (t *Tokenizer) skipTag() {
+	// Consume until '>'
+	for t.pos < len(t.input) && t.input[t.pos] != '>' {
+		t.pos++
+	}
+	if t.pos < len(t.input) {
+		t.pos++ // consume '>'
 	}
 }
 
-// Tokenize is a convenience function that tokenizes input and returns all tokens.
+// Tokenize returns all tokens from the input.
 func Tokenize(input []byte) []*Token {
 	t := NewTokenizer(input)
 	var tokens []*Token

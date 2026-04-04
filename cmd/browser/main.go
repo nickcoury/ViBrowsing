@@ -16,9 +16,13 @@ func main() {
 	url := "https://example.com"
 	if len(os.Args) > 1 {
 		url = os.Args[1]
+		// If it looks like a local file path, prefix with file://
+		if _, err := os.Stat(url); err == nil && !strings.HasPrefix(url, "http") {
+			url = "file://" + url
+		}
 	}
 
-	fmt.Printf("HallucinHTML fetching: %s\n", url)
+	fmt.Printf("ViBrowsing fetching: %s\n", url)
 
 	// Fetch the page
 	resp, err := fetch.Fetch(url, 5)

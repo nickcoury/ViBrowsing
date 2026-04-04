@@ -36,49 +36,34 @@ func (p *Parser) Parse() *Node {
 
 	// Stack: current open elements
 	openStack := []*Node{htmlNode}
-	head := headNode
-	body := bodyNode
 
 	for p.pos < len(p.tokens) {
 		token := p.pp()
+		if token == nil {
+			break
+		}
 
 		switch token.Type {
 		case TokenDOCTYPE:
-			// Ignored for our purposes
+			// Ignored
 			p.advance()
 
 		case TokenStartTag:
 			tagName := strings.ToLower(token.TagName)
 
-			// If we see html/head/body as a first child of html, reuse the bootstrap nodes
-			if len(openStack) == 1 && openStack[0].TagName == "html" {
-				if tagName == "head" && head.Parent == htmlNode {
-					openStack = append(openStack, head)
-					p.advance()
-					continue
-				}
-				if tagName == "body" && body.Parent == htmlNode {
-					openStack = append(openStack, body)
-					p.advance()
-					continue
-				}
-			}
-
-			// Generic element creation
+			// Create new element
 			node := NewElement(tagName)
 			for _, attr := range token.Attributes {
 				node.Attributes = append(node.Attributes, attr)
 			}
 
+			// Append to parent
+			if len(openStack) > 0 {
+				openStack[len(openStack)-1].AppendChild(node)
+			}
+
 			// Void elements are leaf nodes
-			if voidElements[tagName] {
-				if len(openStack) > 0 {
-					openStack[len(openStack)-1].AppendChild(node)
-				}
-			} else {
-				if len(openStack) > 0 {
-					openStack[len(openStack)-1].AppendChild(node)
-				}
+			if !voidElements[tagName] {
 				openStack = append(openStack, node)
 			}
 			p.advance()

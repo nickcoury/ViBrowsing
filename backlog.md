@@ -2,10 +2,10 @@
 
 ## 🔴 Critical (Parser/Rendering)
 
-- [ ] **Fix HTML parser double-html/body bug** — tokenizer correctly skips synthetic root tags (html/head/body opening/closing) but parser still creates duplicate nodes. Move all synthetic tag skipping to tokenizer's StartTag case; remove synthetic element bootstrapping from parser entirely
+- [x] ~~Fix HTML parser double-html/body bug~~ (2026-04-03 sprint) — tokenizer now skips html/head/body StartTag/EndTag tokens; parser bootstraps them once cleanly; no more duplication
 - [ ] **Fix foster parenting** — when </table> closes a table, unclosed `<tr>`/`<td>` children should be moved to the table's parent, not silently dropped
 - [ ] **Fix unclosed tag handling** — when encountering a closing tag with no matching open tag, don't silently drop the close. Compare behavior against html5lib reference
-- [ ] **Implement entity decoding** — `&amp;` `&lt;` `&gt;` `&quot;` `&nbsp;` in text nodes must decode to `&` `<` `>` `"` `` (space). Also numeric: `&#65;` and `&#x41;`
+- [x] ~~Implement entity decoding~~ (2026-04-03 sprint) — added decodeEntities() with named entities (amp, lt, gt, quot, apos, nbsp, ndash, mdash, lsquo, rsquo, ldquo, rdquo, hellip, copy, reg, trade, deg, plusmn, times, divide, frac12, frac14, frac34) and numeric entities (&#65;, &#x41;)
 - [ ] **Implement foreign content handling** — `<svg>` and `<math>` have special nested tokenization rules
 
 ## 🟡 High (Layout/Rendering)
@@ -159,3 +159,108 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - **stackoverflow.com** — code blocks, syntax highlighting, Q&A layout
 - **github.com** — repo UI, markdown, file trees
 - **amazon.com** — e-commerce, product listings, grids, filters
+
+---
+
+## 🟡 Medium (Performance)
+
+- [ ] **Benchmark parsing speed** — measure tokens/second for pages of varying size (1KB, 10KB, 100KB, 1MB). Set baseline and alert on regressions
+- [ ] **Benchmark layout speed** — measure layout pass time for complex DOM trees. Identify bottlenecks
+- [ ] **Benchmark render speed** — measure pixel output rate (pixels/second) for full-page renders
+- [ ] **Optimize tokenizer** — avoid repeated string comparisons in hot path. Use bytes.HasPrefix instead of string matching where possible
+- [ ] **Optimize layout tree walks** — reduce repeated parent/child traversal during box tree construction
+- [ ] **Cache computed styles** — avoid re-computing inherited properties on every element. Build cascade once, reuse
+- [ ] **Parallelize independent subtrees** — if DOM has multiple independent branches, layout/render them concurrently (goroutines)
+- [ ] **Lazy load images** — don't decode image data until it's about to be rendered to screen
+- [ ] **Incremental rendering** — for long documents, render the visible viewport first, then background sections
+- [ ] **Memory pool for nodes** — reuse allocated Node/Token objects instead of GC-heavy allocation per parse
+
+## 🟠 Low (Developer Experience)
+
+- [ ] **Add verbose/debug logging flag** — `browser --debug` to print DOM tree, layout boxes, CSS cascade steps
+- [ ] **Add `--profile` flag** — output timing profile (CPU/memory) for parse + layout + render phases
+- [ ] **Add `--dump-dom` flag** — output the parsed DOM tree as indented text to stdout
+- [ ] **Add `--dump-layout` flag** — output the layout box tree as indented text to stdout
+- [ ] **Add `--benchmark` flag** — run parse+layout+render N times and print timing stats
+- [ ] **Add `--viewport` flag** — set window size (e.g. `--viewport=1280x720` or `--viewport=375x667` for mobile)
+- [ ] **Add `--user-agent` flag** — set User-Agent header for fetch
+- [ ] **Colorize terminal output** — use ANSI colors for DOM/tree dumps in debug mode
+- [ ] **TUI devtools panel** — ncurses-based panel alongside browser showing DOM tree, style computed values, network requests
+- [ ] **Show file:// URL support** — `browser file:///path/to/page.html` for local testing
+
+## 🟡 Medium (Error Handling & Robustness)
+
+- [ ] **Handle malformed URLs gracefully** — show error page instead of panic on bad URL
+- [ ] **Handle fetch timeouts** — configurable timeout for network requests, show error page on timeout
+- [ ] **Handle HTTP errors** — 4xx/5xx responses should show error page, not crash
+- [ ] **Handle binary/non-text content** — if server returns image/binary for HTML content-type, don't try to parse as HTML
+- [ ] **Handle very large pages** — pages > 10MB should be truncated or streaming-parsed, not loaded entirely into memory
+- [ ] **Handle deeply nested DOM** — pages with >10,000 levels of nesting shouldn't stack overflow in recursive layout
+- [ ] **Handle extremely long lines in HTML** — a single line with 10MB of text should not cause memory issues
+- [ ] **Handle missing/invalid CSS** — malformed CSS declarations should be skipped, not crash the cascade
+- [ ] **Handle circular CSS references** — `width: 50%` of parent where parent width depends on child should not infinite loop
+
+## 🟠 Low (Accessibility)
+
+- [ ] **Implement ARIA roles** — `role="button"`, `role="navigation"`, etc. affect rendering semantics
+- [ ] **Implement `<summary>` and `<details>`** — collapsible disclosure widget (toggle visibility of summary content)
+- [ ] **Implement `<dialog>` and `<form>`** — modal dialog element
+- [ ] **Implement `<fieldset>` and `<legend>`** — form grouping with border and label
+- [ ] **Implement `<meter>` and `<progress>`** — gauge and progress bar elements
+- [ ] **Implement `<time>`** — machine-readable date/time element
+- [ ] **Implement `<abbr>`** — abbreviation with tooltip for full text
+- [ ] **Implement `<mark>`** — highlighted/marked text styling
+- [ ] **Implement `<ruby>`** — ruby annotation for East Asian typography (ruby text above/below base text)
+- [ ] **Implement `<bdi>` and `<bdo>`** — bidirectional text isolation and override
+
+## 🟡 Medium (Content & Rendering Quality)
+
+- [ ] **Implement `<img>` actual rendering** — fetch image URL, decode JPEG/PNG/WebP/GIF, display at correct size within content box
+- [ ] **Implement CSS `background-image`** — background images on elements (URL-based)
+- [ ] **Implement CSS gradients** — `linear-gradient()`, `radial-gradient()` as background-image values
+- [ ] **Implement CSS `clip-path`** — masking shapes on elements
+- [ ] **Implement `<video>` and `<audio>`** — show video player frame or audio player with controls UI
+- [ ] **Implement `<canvas>`** — render canvas 2D context content to output
+- [ ] **Implement `<iframe>`** — for embedded content, show placeholder or recursively render same-origin iframes
+- [ ] **Implement emoji rendering** — proper emoji character display (these are complex Unicode, may need a library)
+- [ ] **Implement symbol rendering** — `&copy;`, `&reg;`, `&trade;`, `&mdash;`, `&ndash;`, `&hellip;`, `&nbsp;` named entities
+- [ ] **Implement `calc()` in CSS** — `width: calc(100% - 20px)` support in CSS value parsing
+
+## 🟡 High (CSS Text & Typography)
+
+- [ ] **Implement CSS `font-size`** — absolute sizes (px, pt, em, rem), relative sizes (larger, smaller), keywords (small, medium, large, xx-large)
+- [ ] **Implement CSS `font-family`** — serif, sans-serif, monospace, cursive, fantasy, and generic fallback chain
+- [ ] **Implement CSS `letter-spacing`** — tracking between characters
+- [ ] **Implement CSS `word-spacing`** — spacing between words
+- [ ] **Implement CSS `text-indent`** — first-line indentation
+- [ ] **Implement CSS `text-transform`** — uppercase, lowercase, capitalize
+- [ ] **Implement CSS `text-shadow`** — text shadow effects
+- [ ] **Implement CSS `font-variant`** — small-caps, ligatures
+- [ ] **Implement CSS `quotes`** — custom quote characters for `<q>` elements
+- [ ] **Implement CSS `counter-increment` and `counter-reset`** — automatic numbering for lists/headings
+- [ ] **Implement CSS `direction`** — ltr vs rtl (for Arabic, Hebrew pages)
+- [ ] **Implement CSS `unicode-bidi`** — bidirectional text embedding levels
+- [ ] **Implement CSS `writing-mode`** — horizontal-tb, vertical-rl, vertical-lr
+- [ ] **Implement CSS `tab-size`** — tab character rendering width
+
+## 🟡 High (URL & Navigation)
+
+- [ ] **Implement `<base href>` support** — resolve relative URLs against base tag in document head
+- [ ] **Implement proper URL resolution** — absolute vs relative URL handling (scheme, host, path, query, fragment)
+- [ ] **Implement HTTP redirects** — follow 301/302/303/307/308 redirects with proper URL updating
+- [ ] **Implement HTTP cookies** — send cookies on subsequent requests to same origin
+- [ ] **Implement HTTP Referer header** — send Referer on navigation
+- [ ] **Implement browser history** — back/forward navigation between visited URLs
+- [ ] **Implement link target resolution** — `<a target="_blank">` opens in new tab (or same tab if not supported)
+
+## 🟡 Medium (Window & UI)
+
+- [ ] **Implement window title** — render document `<title>` in window title bar
+- [ ] **Implement favicon** — fetch and display favicon.ico in window
+- [ ] **Implement right-click context menu** — copy link, copy text, open in new tab options
+- [ ] **Implement address bar** — show current URL in a text field at top
+- [ ] **Implement reload/stop buttons** — toolbar with reload, stop, back, forward buttons
+- [ ] **Implement loading indicator** — spinner/progress bar during page fetch
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page
+- [ ] **Implement zoom** — Ctrl+/Ctrl- for page zoom (CSS transforms or viewport scaling)
+- [ ] **Implement focus ring** — visible focus indicator on interactive elements for keyboard navigation

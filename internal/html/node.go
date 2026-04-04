@@ -30,6 +30,16 @@ func NewElement(tagName string) *Node {
 	return &Node{Type: NodeElement, TagName: tagName}
 }
 
+// FindChildByTagName returns the first child element with the given tag name, or nil.
+func (n *Node) FindChildByTagName(tagName string) *Node {
+	for _, child := range n.Children {
+		if child.Type == NodeElement && child.TagName == tagName {
+			return child
+		}
+	}
+	return nil
+}
+
 // NewText creates a new text node.
 func NewText(data string) *Node {
 	return &Node{Type: NodeText, Data: data}

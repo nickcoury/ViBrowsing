@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 )
 
 // Response holds the result of a fetch operation.
@@ -16,7 +18,28 @@ type Response struct {
 }
 
 // Fetch retrieves a URL, following up to maxRedirects redirects.
+// Supports http://, https://, and file:// URLs.
 func Fetch(rawURL string, maxRedirects int) (*Response, error) {
+	// Handle file:// URLs
+	if strings.HasPrefix(rawURL, "file://") {
+		path := rawURL[7:]
+		if strings.HasPrefix(path, "/") {
+			// Unix absolute path
+		} else {
+			// Relative path
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("file not found: %w", err)
+		}
+		return &Response{
+			Body:        data,
+			StatusCode:  200,
+			ContentType: "text/html",
+			FinalURL:   rawURL,
+		}, nil
+	}
+
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
