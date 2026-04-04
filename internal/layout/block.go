@@ -32,6 +32,8 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			layoutBlockChild(child, ctx)
 		case FlexBox:
 			layoutFlexContainer(child, ctx)
+		case PositionedBox:
+			layoutPositionedChild(child, ctx)
 		case InlineBox, TextBox:
 			layoutInlineChild(child, box, ctx)
 		}
@@ -427,9 +429,66 @@ func layoutChild(child *Box, parent *Box, ctx *LayoutContext) {
 		layoutBlockChild(child, ctx)
 	case FlexBox:
 		layoutFlexContainer(child, ctx)
+	case PositionedBox:
+		layoutPositionedChild(child, ctx)
 	default:
 		layoutInlineChild(child, parent, ctx)
 	}
+}
+
+// layoutPositionedChild handles position:absolute/relative/fixed layout.
+func layoutPositionedChild(box *Box, ctx *LayoutContext) {
+	position := box.Style["position"]
+
+	if position == "fixed" {
+		// Fixed is relative to viewport
+		ctx = &LayoutContext{
+			Width: 800,
+			Height: 600,
+			X:     0,
+			Y:     0,
+		}
+	}
+
+	top := css.ParseLength(box.Style["top"])
+	left := css.ParseLength(box.Style["left"])
+	_ = css.ParseLength(box.Style["right"])  // right/bottom not yet used
+	_ = css.ParseLength(box.Style["bottom"])
+
+	width := computeWidth(box, ctx.Width)
+
+	if position == "relative" {
+		// Relative: offset from normal position
+		box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+		box.ContentY = ctx.Y + css.ParseLength(box.Style["margin-top"]).Value
+		if !left.IsAuto {
+			box.ContentX = ctx.X + left.Value
+		}
+		if !top.IsAuto {
+			box.ContentY = ctx.Y + top.Value
+		}
+	} else {
+		// Absolute: removed from flow, positioned relative to containing block
+		box.ContentX = ctx.X
+		box.ContentY = ctx.Y
+		if !left.IsAuto {
+			box.ContentX = ctx.X + left.Value
+		}
+		if !top.IsAuto {
+			box.ContentY = ctx.Y + top.Value
+		}
+	}
+
+	box.ContentW = width
+	box.ContentH = computeHeight(box, ctx)
+
+	// Layout children within positioned box
+	childCtx := &LayoutContext{
+		Width: box.ContentW,
+		X:     box.ContentX,
+		Y:     box.ContentY,
+	}
+	layoutChildren(box, childCtx)
 }
 
 func computeWidth(box *Box, containingWidth float64) float64 {

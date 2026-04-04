@@ -16,6 +16,7 @@ const (
 	InlineBlock
 	TextBox
 	FlexBox
+	PositionedBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -199,6 +200,11 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	// Flex container
 	if display == "flex" {
 		box.Type = FlexBox
+	}
+
+	// Positioned elements
+	if position := style["position"]; position == "absolute" || position == "relative" || position == "fixed" {
+		box.Type = PositionedBox
 	}
 
 	// Parse box model properties
