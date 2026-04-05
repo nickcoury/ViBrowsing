@@ -18,11 +18,16 @@ const (
 // Node represents a DOM node.
 type Node struct {
 	Type       NodeType
-	TagName    string // e.g., "div", "span", "html"
+	TagName    string // e.g. "div", "span", "html"
 	Data       string // text content for text nodes
 	Attributes []Attribute
 	Parent     *Node
 	Children   []*Node
+
+	// TemplateContent is the inert document fragment for <template> elements.
+	// The content inside <template> is parsed but not rendered until
+	// JavaScript activates it (typically via template.content).
+	TemplateContent *Node
 }
 
 // NewDocument creates a new document node.

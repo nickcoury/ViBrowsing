@@ -26,7 +26,7 @@ func main() {
 		}
 	}
 	
-	layoutBox := layout.BuildLayoutTree(dom, cssRules)
+	layoutBox := layout.BuildLayoutTree(dom, cssRules, 800, 600) // default viewport
 	if layoutBox == nil {
 		fmt.Println("No layout tree")
 		return

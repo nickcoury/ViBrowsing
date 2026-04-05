@@ -20,11 +20,11 @@ func makeText(n int) string {
 // Tests cover box tree construction, block/inline/flex layout,
 // float handling, positioning, and vertical alignment.
 
-// Helper to build a simple layout tree from HTML+CSS
+// Helper to build a simple layout tree from HTML+CSS with default viewport
 func buildLayout(htmlSrc, cssSrc string) *Box {
 	doc := html.Parse([]byte(htmlSrc))
 	rules := css.Parse(cssSrc)
-	return BuildLayoutTree(doc, rules)
+	return BuildLayoutTree(doc, rules, 800, 600)
 }
 
 func TestLayout_BuildBoxTree(t *testing.T) {
@@ -985,7 +985,7 @@ func TestLayout_SampleFiles(t *testing.T) {
 			}
 			doc := html.Parse(data)
 			rules := css.Parse("")
-			box := BuildLayoutTree(doc, rules)
+			box := BuildLayoutTree(doc, rules, 800, 600)
 			if box == nil {
 				t.Fatal("box tree was nil")
 			}
@@ -1010,7 +1010,7 @@ func BenchmarkLayout_SamplePages(b *testing.B) {
 		}
 		doc := html.Parse(data)
 		rules := css.Parse("")
-		box := BuildLayoutTree(doc, rules)
+		box := BuildLayoutTree(doc, rules, 800, 600)
 		boxes = append(boxes, struct {
 			doc   *html.Node
 			rules []css.Rule

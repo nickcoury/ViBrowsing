@@ -285,6 +285,53 @@ func IsInvalid(node *html.Node) bool {
 	return !IsValid(node)
 }
 
+// parseSelectorList splits a selector list by commas, respecting nested parentheses.
+// This is used by :is(), :where(), and :not() pseudo-classes.
+func parseSelectorList(formula string) []string {
+	var selectors []string
+	var current strings.Builder
+	depth := 0
+	for i := 0; i < len(formula); i++ {
+		c := formula[i]
+		if c == '(' {
+			depth++
+			current.WriteByte(c)
+		} else if c == ')' {
+			depth--
+			current.WriteByte(c)
+		} else if c == ',' && depth == 0 {
+			selectors = append(selectors, current.String())
+			current.Reset()
+		} else {
+			current.WriteByte(c)
+		}
+	}
+	if s := strings.TrimSpace(current.String()); s != "" {
+		selectors = append(selectors, s)
+	}
+	return selectors
+}
+
+// MatchIsWherePseudoClass matches :is() and :where() pseudo-classes.
+// These are "forgiving" selector list pseudo-classes that match if ANY selector
+// in the list matches. :where() has 0 specificity (handled at specificity calculation)
+// but the matching logic is the same.
+// The isWhere parameter is just for debugging/logging and doesn't affect matching.
+func MatchIsWherePseudoClass(node *html.Node, formula string) bool {
+	if formula == "" {
+		return false
+	}
+	// Split by comma, but respect nested parentheses
+	selectors := parseSelectorList(formula)
+	for _, sel := range selectors {
+		sel = strings.TrimSpace(sel)
+		if sel != "" && MatchNodeSelector(node, sel) {
+			return true
+		}
+	}
+	return false
+}
+
 // PlaceholderShown checks if the placeholder text is currently visible.
 // Placeholder is shown when: element has placeholder attribute AND value is empty.
 func PlaceholderShown(node *html.Node) bool {
@@ -302,4 +349,390 @@ func PlaceholderShown(node *html.Node) bool {
 
 	// Placeholder is shown when there's a placeholder attribute and no value
 	return placeholder != "" && value == ""
+}
+
+// MatchHasSelector checks if a node matches the :has() pseudo-class with a relative selector.
+// The relative selector is evaluated against descendants/ancestors/siblings of the current node.
+// Returns true if ANY element matching the relative selector's starting point exists in the
+// appropriate relationship to the current node.
+//
+// Examples:
+//   - div:has(p) — div contains a p descendant
+//   - img:has(+ p) — img has an adjacent sibling p immediately before it
+//   - p:has(~ div) — p has a div sibling after it (general sibling)
+func MatchHasSelector(node *html.Node, relativeSelector string) bool {
+	if node == nil || node.Type != html.NodeElement {
+		return false
+	}
+	if relativeSelector == "" {
+		return false
+	}
+
+	relSel := strings.TrimSpace(relativeSelector)
+	if relSel == "" {
+		return false
+	}
+
+	// Parse the relative selector to find the first combinator and the initial selector
+	// The initial selector (before any combinator) is matched against potential target nodes
+	// found by traversing from node in the direction specified by the combinator.
+	//
+	// Combinators:
+	//   " " (space) - descendant: any descendant of node matches the initial selector
+	//   ">"           - child: any direct child of node matches the initial selector
+	//   "+"           - adjacent sibling: immediately preceding sibling matches
+	//   "~"           - general sibling: any preceding sibling matches
+
+	// Find the first combinator
+	firstCombinator := " " // Default is descendant
+	combinatorIdx := -1
+	inAttr := false
+	inParen := 0
+
+	for i := 0; i < len(relSel); i++ {
+		c := relSel[i]
+		if c == '[' {
+			inAttr = true
+		} else if c == ']' {
+			inAttr = false
+		} else if c == '(' {
+			inParen++
+		} else if c == ')' {
+			inParen--
+		} else if !inAttr && inParen == 0 {
+			if c == '>' || c == '+' || c == '~' {
+				firstCombinator = string(c)
+				combinatorIdx = i
+				break
+			}
+		}
+	}
+
+	var initialSelector string
+	var remainingSelectors string
+
+	if combinatorIdx >= 0 {
+		// There is a combinator
+		initialSelector = strings.TrimSpace(relSel[:combinatorIdx])
+		remainingSelectors = strings.TrimSpace(relSel[combinatorIdx+1:])
+	} else {
+		// No combinator - default to descendant
+		initialSelector = relSel
+		remainingSelectors = ""
+	}
+
+	if initialSelector == "" {
+		return false
+	}
+
+	switch firstCombinator {
+	case ">":
+		// Direct child: check immediate children of node
+		for _, child := range node.Children {
+			if child.Type == html.NodeElement && matchSimpleSelectorHas(child, initialSelector) {
+				// If there are remaining selectors, verify them
+				if remainingSelectors != "" {
+					if matchRelativeChain(child, remainingSelectors) {
+						return true
+					}
+				} else {
+					return true
+				}
+			}
+		}
+		return false
+
+	case "+":
+		// Adjacent sibling: immediately preceding sibling
+		prev := findPrecedingSiblingElement(node)
+		if prev != nil && matchSimpleSelectorHas(prev, initialSelector) {
+			if remainingSelectors != "" {
+				return matchRelativeChain(prev, remainingSelectors)
+			}
+			return true
+		}
+		return false
+
+	case "~":
+		// General sibling: any preceding sibling
+		prev := findAnyPrecedingSiblingElement(node)
+		for prev != nil {
+			if prev.Type == html.NodeElement && matchSimpleSelectorHas(prev, initialSelector) {
+				if remainingSelectors != "" {
+					if matchRelativeChain(prev, remainingSelectors) {
+						return true
+					}
+				} else {
+					return true
+				}
+			}
+			// Move to previous sibling
+			prev = findPrecedingSiblingElement(prev)
+		}
+		return false
+
+	default:
+		// Descendant (space): any descendant
+		return hasMatchingDescendant(node, initialSelector, remainingSelectors)
+	}
+}
+
+// findPrecedingSiblingElement returns the immediately preceding element sibling.
+func findPrecedingSiblingElement(node *html.Node) *html.Node {
+	if node.Parent == nil {
+		return nil
+	}
+	found := false
+	for _, sib := range node.Parent.Children {
+		if sib == node {
+			found = true
+			break
+		}
+		if sib.Type == html.NodeElement {
+			if found {
+				return sib
+			}
+		}
+	}
+	return nil
+}
+
+// findAnyPrecedingSiblingElement returns the closest preceding element sibling.
+func findAnyPrecedingSiblingElement(node *html.Node) *html.Node {
+	if node.Parent == nil {
+		return nil
+	}
+	var prev *html.Node
+	for _, sib := range node.Parent.Children {
+		if sib == node {
+			break
+		}
+		if sib.Type == html.NodeElement {
+			prev = sib
+		}
+	}
+	return prev
+}
+
+// hasMatchingDescendant checks if any descendant of node matches the given selector.
+func hasMatchingDescendant(node *html.Node, selector, remaining string) bool {
+	for _, child := range node.Children {
+		if child.Type != html.NodeElement {
+			continue
+		}
+		if matchSimpleSelectorHas(child, selector) {
+			if remaining != "" {
+				if matchRelativeChain(child, remaining) {
+					return true
+				}
+			} else {
+				return true
+			}
+		}
+		// Recursively check descendants
+		if hasMatchingDescendant(child, selector, remaining) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchSimpleSelectorHas is a specialized version of matchSimpleSelector
+// for use in :has() matching. It only handles simple selectors (tag, class, id, attribute).
+func matchSimpleSelectorHas(node *html.Node, sel string) bool {
+	// Universal selector * matches everything
+	if sel == "*" {
+		return true
+	}
+
+	tagName := strings.ToLower(node.TagName)
+	sel = strings.TrimSpace(sel)
+
+	for len(sel) > 0 {
+		sel = strings.TrimSpace(sel)
+		if len(sel) == 0 {
+			break
+		}
+
+		switch sel[0] {
+		case '#':
+			// ID selector
+			sel = sel[1:]
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' {
+				end++
+			}
+			id := sel[:end]
+			sel = sel[end:]
+			if node.GetAttribute("id") != id {
+				return false
+			}
+
+		case '.':
+			// Class selector
+			sel = sel[1:]
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' {
+				end++
+			}
+			class := sel[:end]
+			sel = sel[end:]
+			if !node.ClassList().Contains(class) {
+				return false
+			}
+
+		case '[':
+			// Attribute selector
+			end := strings.Index(sel[1:], "]")
+			if end < 0 {
+				return false
+			}
+			attrSel := sel[:end+2]
+			sel = sel[end+2:]
+
+			attrName, op, value := parseAttributeSelector(attrSel)
+			nodeAttr := node.GetAttribute(attrName)
+			if !matchAttributeSelector(nodeAttr, op, value) {
+				return false
+			}
+
+		case ':':
+			// Pseudo-class - for :has() simple matching, we handle :not() specially
+			// Other pseudo-classes are treated as not matching for simplicity
+			sel = sel[1:]
+			if len(sel) == 0 {
+				return false
+			}
+			if sel[0] == ':' {
+				// Pseudo-element
+				sel = sel[1:]
+				continue
+			}
+			// Parse pseudo-class name and optional argument
+			var pseudoName string
+			var pseudoArg string
+			if idx := strings.Index(sel, "("); idx >= 0 {
+				pseudoName = sel[:idx]
+				argStart := idx + 1
+				depth := 1
+				for i := argStart; i < len(sel); i++ {
+					if sel[i] == '(' {
+						depth++
+					} else if sel[i] == ')' {
+						depth--
+						if depth == 0 {
+							pseudoArg = sel[argStart:i]
+							sel = sel[i+1:]
+							break
+						}
+					}
+				}
+				if depth != 0 {
+					return false
+				}
+			} else {
+				end := 0
+				for end < len(sel) && (isAlphanumeric(sel[end]) || sel[end] == '-') {
+					end++
+				}
+				pseudoName = sel[:end]
+				sel = sel[end:]
+			}
+			pseudoName = strings.ToLower(pseudoName)
+
+			// Handle :not() specially - it must match for the overall selector to match
+			if pseudoName == "not" {
+				if !MatchNot(node, pseudoArg) {
+					return false
+				}
+			} else {
+				// For other pseudo-classes in a :has() context,
+				// we treat them as not matching since they require
+				// more complex evaluation
+				return false
+			}
+
+		default:
+			// Tag selector
+			end := 0
+			for end < len(sel) && sel[end] != '.' && sel[end] != '#' && sel[end] != '[' && sel[end] != ':' && sel[end] != ' ' {
+				end++
+			}
+			tag := sel[:end]
+			sel = sel[end:]
+			if tag != "*" && tagName != strings.ToLower(tag) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// matchRelativeChain matches a chain of selectors with combinators.
+// This is used for the part of the :has() selector after the initial selector.
+func matchRelativeChain(node *html.Node, relSel string) bool {
+	// Parse and match the relative selector chain
+	parts := splitSelectorParts(relSel)
+	if len(parts) == 0 {
+		return false
+	}
+
+	// Start with the first selector
+	curr := node
+	if !matchSimpleSelectorHas(curr, parts[0]) {
+		return false
+	}
+
+	// Process remaining (combinator, selector) pairs
+	i := 1
+	for i < len(parts) {
+		if i+1 >= len(parts) {
+			break
+		}
+		combinator := parts[i]
+		selector := parts[i+1]
+		i += 2
+
+		var next *html.Node
+		switch combinator {
+		case ">":
+			// Child: direct parent
+			next = curr.Parent
+		case "+":
+			// Adjacent sibling: immediately preceding sibling
+			next = findPrecedingSiblingElement(curr)
+		case "~":
+			// General sibling: any preceding sibling
+			next = findAnyPrecedingSiblingElement(curr)
+		default:
+			// Descendant (space): any ancestor
+			next = curr.Parent
+		}
+
+		if next == nil {
+			return false
+		}
+		curr = next
+
+		// If combinator was descendant, we need to walk up and find a matching ancestor
+		if combinator == " " {
+			found := false
+			for curr != nil {
+				if matchSimpleSelectorHas(curr, selector) {
+					found = true
+					break
+				}
+				curr = curr.Parent
+			}
+			if !found {
+				return false
+			}
+		} else {
+			if !matchSimpleSelectorHas(curr, selector) {
+				return false
+			}
+		}
+	}
+	return true
 }

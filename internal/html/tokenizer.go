@@ -1,12 +1,16 @@
 package html
 
-import "strings"
+import (
+	"bufio"
+	"io"
+	"strings"
+)
 
 // TokenType represents the type of an HTML token.
 type TokenType int
 
 const (
-	TokenDOCTYPE TokenType= iota
+	TokenDOCTYPE TokenType = iota
 	TokenStartTag
 	TokenEndTag
 	TokenComment
@@ -29,15 +33,60 @@ type Attribute struct {
 }
 
 // Tokenizer is an HTML5 tokenizer.
+// It can operate on byte input (via input field) or read from an io.Reader (via reader field).
+// When using ReadFrom, the input field is used as a buffer and reader provides additional data.
 type Tokenizer struct {
 	input    []rune
 	pos      int
 	done     bool
+	reader   io.Reader
+	bufReader *bufio.Reader
 }
 
-// NewTokenizer creates a new tokenizer.
+// NewTokenizer creates a new tokenizer from byte input.
 func NewTokenizer(input []byte) *Tokenizer {
 	return &Tokenizer{input: []rune(string(input)), pos: 0}
+}
+
+// NewTokenizerFromReader creates a new tokenizer that reads from an io.Reader.
+// The reader will be used to fetch more data as needed.
+func NewTokenizerFromReader(r io.Reader) *Tokenizer {
+	return &Tokenizer{
+		input:    nil,
+		pos:      0,
+		done:     false,
+		reader:   r,
+		bufReader: bufio.NewReaderSize(r, 32*1024),
+	}
+}
+
+// ReadFrom reads data from the reader into the tokenizer's input buffer.
+// This allows incremental parsing of large documents.
+func (t *Tokenizer) ReadFrom() error {
+	if t.reader == nil {
+		return nil
+	}
+
+	// Read more data from the reader
+	reader := t.bufReader
+	if reader == nil {
+		reader = bufio.NewReaderSize(t.reader, 32*1024)
+	}
+
+	// Expand input buffer
+	data := make([]byte, 32*1024)
+	n, err := reader.Read(data)
+	if n > 0 {
+		newRunes := []rune(string(data[:n]))
+		t.input = append(t.input, newRunes...)
+	}
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if err == io.EOF {
+		t.reader = nil
+	}
+	return nil
 }
 
 // Next returns the next token, or nil at end of input.

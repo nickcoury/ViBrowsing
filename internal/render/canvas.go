@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -12,11 +13,107 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/freetype/truetype"
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/fetch"
 	"github.com/nickcoury/ViBrowsing/internal/html"
 	"github.com/nickcoury/ViBrowsing/internal/layout"
+	"golang.org/x/image/font"
+	"golang.org/x/image/math/fixed"
 )
+
+// isEmoji returns true if the rune is an emoji character.
+// Emoji ranges include:
+// - U+1F300 to U+1F9FF (misc symbols, dingbats, emoji)
+// - U+2600 to U+26FF (misc symbols)
+// - U+2700 to U+27BF (dingbats)
+// - Supplemental emoji: U+1F600 to U+1F64F, U+1F680 to U+1F6FF, U+1F900 to U+1F9FF
+func isEmoji(r rune) bool {
+	// Miscellaneous Symbols and Pictographs (U+1F300 to U+1F5FF)
+	if r >= 0x1F300 && r <= 0x1F5FF {
+		return true
+	}
+	// Emoticons (U+1F600 to U+1F64F)
+	if r >= 0x1F600 && r <= 0x1F64F {
+		return true
+	}
+	// Transport and Map Symbols (U+1F680 to U+1F6FF)
+	if r >= 0x1F680 && r <= 0x1F6FF {
+		return true
+	}
+	// Supplemental Symbols and Pictographs (U+1F900 to U+1F9FF)
+	if r >= 0x1F900 && r <= 0x1F9FF {
+		return true
+	}
+	// Miscellaneous Symbols (U+2600 to U+26FF)
+	if r >= 0x2600 && r <= 0x26FF {
+		return true
+	}
+	// Dingbats (U+2700 to U+27BF)
+	if r >= 0x2700 && r <= 0x27BF {
+		return true
+	}
+	return false
+}
+
+// drawEmojiPlaceholder draws a colored circle as a placeholder for an emoji character.
+// The color is derived from the emoji's codepoint to provide visual distinction.
+func (c *Canvas) drawEmojiPlaceholder(x, y float64, size float64, r rune, col color.Color) {
+	// Derive color components from the codepoint
+	// Use a hash of the codepoint to generate distinct colors
+	cp := int(r)
+	// Generate hue from codepoint (0-360)
+	hue := float64(cp%360) * 2 // Multiply to spread colors better
+	// Convert HSV to RGB for a colorful circle
+	saturation := 0.7
+	value := 0.9
+
+	// Convert HSV to RGB
+	h := hue / 60.0
+	hf := math.Floor(h)
+	hi := int(hf) % 6
+	f := h - hf
+
+	v := value * 255
+	p := value * (1 - saturation) * 255
+	q := value * (1 - saturation*f) * 255
+	t := value * (1 - saturation*(1-f)) * 255
+
+	var cr, cg, cb uint8
+	switch hi {
+	case 0:
+		cr, cg, cb = uint8(v), uint8(t), uint8(p)
+	case 1:
+		cr, cg, cb = uint8(q), uint8(v), uint8(p)
+	case 2:
+		cr, cg, cb = uint8(p), uint8(v), uint8(t)
+	case 3:
+		cr, cg, cb = uint8(p), uint8(q), uint8(v)
+	case 4:
+		cr, cg, cb = uint8(t), uint8(p), uint8(v)
+	case 5:
+		cr, cg, cb = uint8(v), uint8(p), uint8(q)
+	}
+
+	emojiColor := color.RGBA{R: cr, G: cg, B: cb, A: 255}
+
+	// Draw a filled circle as the emoji placeholder
+	centerX := int(x + size/2)
+	centerY := int(y + size/2)
+	radius := int(size / 2)
+
+	for dy := -radius; dy <= radius; dy++ {
+		for dx := -radius; dx <= radius; dx++ {
+			if dx*dx+dy*dy <= radius*radius {
+				px := centerX + dx
+				py := centerY + dy
+				if px >= 0 && px < c.Width && py >= 0 && py < c.Height {
+					c.Pixels.SetRGBA(px, py, emojiColor)
+				}
+			}
+		}
+	}
+}
 
 // Canvas represents a pixel buffer for rendering.
 type Canvas struct {
@@ -35,15 +132,173 @@ type Canvas struct {
 	// pageHeight is the total height of the laid-out page content
 	// Used to calculate scroll limits
 	PageHeight int
+
+	// fontCache caches loaded fonts by family+size for reuse
+	fontCache map[string]*truetype.Font
+
+	// advanceWidths caches avg advance widths per font+size
+	advanceWidths map[string]float64
+
+	// Default font
+	defaultFont *truetype.Font
+	defaultAdvWidth float64
+}
+
+// fontPaths maps CSS font-family names to system font file paths
+var fontPaths = map[string]string{
+	"serif":      "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+	"sans-serif": "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+	"monospace":  "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
 }
 
 // NewCanvas creates a new canvas with the given dimensions.
 func NewCanvas(width, height int) *Canvas {
-	return &Canvas{
-		Width:  width,
-		Height: height,
-		Pixels: image.NewRGBA(image.Rect(0, 0, width, height)),
+	c := &Canvas{
+		Width:          width,
+		Height:         height,
+		Pixels:         image.NewRGBA(image.Rect(0, 0, width, height)),
+		fontCache:      make(map[string]*truetype.Font),
+		advanceWidths: make(map[string]float64),
 	}
+	c.loadFonts()
+	return c
+}
+
+// loadFonts loads system fonts for text rendering
+func (c *Canvas) loadFonts() {
+	for name, path := range fontPaths {
+		f, err := loadFontFile(path)
+		if err == nil {
+			c.fontCache[name] = f
+			// Precompute advance width at 16px as default
+			c.advanceWidths[name+"_16"] = c.computeAdvanceWidth(f, 16)
+		}
+	}
+	// Set default font
+	if f, ok := c.fontCache["sans-serif"]; ok {
+		c.defaultFont = f
+		c.defaultAdvWidth = c.advanceWidths["sans-serif_16"]
+	} else if len(c.fontCache) > 0 {
+		for name, f := range c.fontCache {
+			c.defaultFont = f
+			c.defaultAdvWidth = c.advanceWidths[name+"_16"]
+			break
+		}
+	}
+}
+
+// computeAdvanceWidth computes the average advance width for a font at a given size
+func (c *Canvas) computeAdvanceWidth(f *truetype.Font, fontSize float64) float64 {
+	if f == nil {
+		return fontSize * 0.6
+	}
+	// Convert fontSize to 26.6 fixed point scale
+	scale := fixed.Int26_6(fontSize * 64)
+	
+	// Sample a-z to get average width
+	var total fixed.Int26_6
+	count := 0
+	for i := rune('a'); i <= rune('z'); i++ {
+		idx := f.Index(i)
+		if idx != 0 {
+			hm := f.HMetric(scale, idx)
+			total += hm.AdvanceWidth
+			count++
+		}
+	}
+	if count > 0 {
+		avgFixed := total / fixed.Int26_6(count)
+		return float64(avgFixed) / 64.0
+	}
+	return fontSize * 0.6
+}
+
+// loadFontFile loads a TrueType font file and returns the parsed font
+func loadFontFile(path string) (*truetype.Font, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return truetype.Parse(data)
+}
+
+// GetFont returns a font and its average advance width for the given CSS font properties
+func (c *Canvas) GetFont(fontFamily string, fontSize float64) (*truetype.Font, float64) {
+	// Normalize font family name
+	family := strings.ToLower(fontFamily)
+	if family == "serif" || family == "times" || family == "georgia" {
+		family = "serif"
+	} else if family == "monospace" || family == "courier" || family == "consolas" {
+		family = "monospace"
+	} else {
+		family = "sans-serif"
+	}
+
+	// Check cache
+	if f, ok := c.fontCache[family]; ok {
+		return f, c.computeAdvanceWidth(f, fontSize)
+	}
+
+	return c.defaultFont, c.defaultAdvWidth
+}
+
+// DrawGlyph draws a single glyph at the specified position using the freetype rasterizer
+func (c *Canvas) DrawGlyph(f *truetype.Font, fontSize, x, y float64, col color.Color, ch rune) {
+	if f == nil {
+		return
+	}
+	
+	// Create a font face for this size
+	face := truetype.NewFace(f, &truetype.Options{
+		Size:    fontSize,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	
+	// The dot position in 26.6 fixed point (baseline of glyph)
+	dot := fixed.Point26_6{
+		X: fixed.Int26_6(x * 64),
+		Y: fixed.Int26_6(y * 64),
+	}
+	
+	// Get the glyph mask - Glyph returns 5 values: dr, mask, maskp, advance, ok
+	dr, mask, maskp, _, ok := face.Glyph(dot, ch)
+	if !ok {
+		return
+	}
+	
+	// Create a temporary RGBA image for the color
+	tmp := image.NewRGBA(dr)
+	draw.Draw(tmp, dr, &image.Uniform{col}, image.ZP, draw.Src)
+	
+	// Draw the glyph mask onto our canvas using draw.DrawMask
+	// maskp is the offset within the mask where the glyph starts
+	dstRect := dr.Sub(dr.Min).Add(image.Point{
+		X: int(x) + maskp.X - dr.Min.X,
+		Y: int(y) + maskp.Y - dr.Min.Y,
+	})
+	if dstRect.Min.X < 0 {
+		mask = mask.(interface {
+			SubImage(r image.Rectangle) image.Image
+		}).SubImage(image.Rectangle{
+			Min: image.Point{X: -dstRect.Min.X, Y: 0},
+			Max: mask.Bounds().Max,
+		})
+		dstRect.Min.X = 0
+	}
+	if dstRect.Min.Y < 0 {
+		mask = mask.(interface {
+			SubImage(r image.Rectangle) image.Image
+		}).SubImage(image.Rectangle{
+			Min: image.Point{X: 0, Y: -dstRect.Min.Y},
+			Max: mask.Bounds().Max,
+		})
+		dstRect.Min.Y = 0
+	}
+	
+	// Use draw.DrawMask to composite the glyph
+	srcRect := tmp.Bounds()
+	draw.DrawMask(c.Pixels, dstRect, tmp, srcRect.Min, mask, maskp, draw.Over)
 }
 
 // InnerWidth returns the viewport width (window.innerWidth equivalent).
@@ -447,6 +702,236 @@ func (c *Canvas) PopClip() {
 	}
 }
 
+// applyClipPath applies a CSS clip-path to the canvas.
+// For inset: uses PushClip with inset rectangle
+// For circle/ellipse: draws content to temp image and masks with ellipse
+// For polygon: uses bounding box (full polygon clipping requires GPU)
+func (c *Canvas) applyClipPath(box *layout.Box) (restore func(), err error) {
+	clipPath := box.Style["clip-path"]
+	if clipPath == "" || clipPath == "none" {
+		return func() {}, nil
+	}
+
+	shape, err := css.ParseClipPath(clipPath)
+	if err != nil || shape.Type == "none" {
+		return func() {}, err
+	}
+
+	contentX := int(box.ContentX) - c.ScrollX
+	contentY := int(box.ContentY) - c.ScrollY
+	contentW := int(box.ContentW)
+	contentH := int(box.ContentH)
+
+	if contentW <= 0 || contentH <= 0 {
+		contentW = 800
+		contentH = 600
+	}
+
+	switch shape.Type {
+	case "inset":
+		// inset(top right bottom left) - inset from box edges
+		insetTop := int(shape.InsetTop)
+		insetRight := int(shape.InsetRight)
+		insetBottom := int(shape.InsetBottom)
+		insetLeft := int(shape.InsetLeft)
+
+		clipX := contentX + insetLeft
+		clipY := contentY + insetTop
+		clipW := contentW - insetLeft - insetRight
+		clipH := contentH - insetTop - insetBottom
+
+		if clipW < 0 {
+			clipW = 0
+		}
+		if clipH < 0 {
+			clipH = 0
+		}
+
+		if clipW > 0 && clipH > 0 {
+			c.PushClip(clipX, clipY, clipW, clipH)
+			restore = func() { c.PopClip() }
+		} else {
+			restore = func() {}
+		}
+
+	case "circle", "ellipse":
+		// Create elliptical clip using alpha masking
+		rx := shape.RadiusX
+		ry := shape.RadiusY
+		cx := shape.CenterX // percentage (0-100)
+		cy := shape.CenterY // percentage (0-100)
+
+		// Default radius for circle
+		if shape.Type == "circle" {
+			if rx == 0 {
+				rx = math.Min(float64(contentW), float64(contentH)) / 2
+			}
+			ry = rx // circle has equal radii
+		}
+
+		// If ry is still 0, use min dimension
+		if ry == 0 {
+			ry = math.Min(rx, float64(contentH))
+		}
+
+		// Convert percentages to pixels relative to content box
+		centerX := contentX + int(cx*float64(contentW)/100)
+		centerY := contentY + int(cy*float64(contentH)/100)
+
+		// Create a temporary RGBA image for masking
+		maskImg := image.NewRGBA(image.Rect(0, 0, c.Width, c.Height))
+
+		// Draw white ellipse on black background (the mask)
+		rxInt := int(rx)
+		ryInt := int(ry)
+		if rxInt <= 0 {
+			rxInt = 1
+		}
+		if ryInt <= 0 {
+			ryInt = 1
+		}
+
+		// Draw filled ellipse using mid-point ellipse algorithm
+		drawEllipseFill(maskImg, centerX, centerY, rxInt, ryInt, color.RGBA{255, 255, 255, 255})
+
+		// Create result image
+		resultImg := image.NewRGBA(image.Rect(0, 0, c.Width, c.Height))
+
+		// Apply mask: copy pixels only where mask is white
+		bounds := maskImg.Bounds()
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				maskPixel := maskImg.RGBAAt(x, y)
+				if maskPixel.R > 128 { // In ellipse
+					resultImg.SetRGBA(x, y, c.Pixels.RGBAAt(x, y))
+				} else { // Outside ellipse - transparent/black
+					resultImg.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+				}
+			}
+		}
+
+		// Copy result back to canvas pixels
+		for y := 0; y < c.Height; y++ {
+			for x := 0; x < c.Width; x++ {
+				c.Pixels.Set(x, y, resultImg.RGBAAt(x, y))
+			}
+		}
+
+		restore = func() {}
+
+	case "polygon":
+		// Polygon clipping is complex without GPU - use bounding box approximation
+		if len(shape.Points) >= 3 {
+			// Find bounding box
+			minX, maxX := shape.Points[0][0], shape.Points[0][0]
+			minY, maxY := shape.Points[0][1], shape.Points[0][1]
+			for _, p := range shape.Points[1:] {
+				if p[0] < minX {
+					minX = p[0]
+				}
+				if p[0] > maxX {
+					maxX = p[0]
+				}
+				if p[1] < minY {
+					minY = p[1]
+				}
+				if p[1] > maxY {
+					maxY = p[1]
+				}
+			}
+			bx := contentX + int(minX*float64(contentW)/100)
+			by := contentY + int(minY*float64(contentH)/100)
+			bw := int((maxX - minX) * float64(contentW) / 100)
+			bh := int((maxY - minY) * float64(contentH) / 100)
+
+			if bw > 0 && bh > 0 {
+				c.PushClip(bx, by, bw, bh)
+				restore = func() { c.PopClip() }
+			} else {
+				restore = func() {}
+			}
+		} else {
+			restore = func() {}
+		}
+
+	default:
+		restore = func() {}
+	}
+
+	return restore, nil
+}
+
+// drawEllipseFill draws a filled ellipse at (cx, cy) with radii (rx, ry)
+func drawEllipseFill(img *image.RGBA, cx, cy, rx, ry int, col color.Color) {
+	if rx <= 0 || ry <= 0 {
+		return
+	}
+
+	// Use mid-point ellipse algorithm for efficiency
+	rx2 := float64(rx * rx)
+	ry2 := float64(ry * ry)
+	twoRx2 := 2 * rx2
+	twoRy2 := 2 * ry2
+
+	// Region 1
+	x := 0
+	y := ry
+	px := 0.0
+	py := twoRx2 * float64(y)
+
+	// Plot initial points
+	plotEllipsePoints(img, cx, cy, x, y, col)
+
+	// Region 1 decision parameter
+	p1 := ry2 - rx2*float64(ry) + 0.25*rx2
+
+	for px < py {
+		x++
+		px += twoRy2
+		if p1 < 0 {
+			p1 += ry2 + px
+		} else {
+			y--
+			py -= twoRx2
+			p1 += ry2 + px - py
+		}
+		plotEllipsePoints(img, cx, cy, x, y, col)
+	}
+
+	// Region 2 decision parameter
+	p2 := ry2*float64((x+1)*(x+1)) + rx2*float64((y-1)*(y-1)) - rx2*ry2
+
+	for y > 0 {
+		y--
+		py -= twoRx2
+		if p2 > 0 {
+			p2 += rx2 - py
+		} else {
+			x++
+			px += twoRy2
+			p2 += rx2 - py + px
+		}
+		plotEllipsePoints(img, cx, cy, x, y, col)
+	}
+}
+
+// plotEllipsePoints plots the four symmetric points of an ellipse
+func plotEllipsePoints(img *image.RGBA, cx, cy, x, y int, col color.Color) {
+	// Draw horizontal line at y offset to fill the ellipse
+	for dx := -x; dx <= x; dx++ {
+		px := cx + dx
+		py1 := cy + y
+		py2 := cy - y
+
+		if px >= 0 && px < img.Bounds().Dx() && py1 >= 0 && py1 < img.Bounds().Dy() {
+			img.Set(px, py1, col)
+		}
+		if px >= 0 && px < img.Bounds().Dx() && py2 >= 0 && py2 < img.Bounds().Dy() {
+			img.Set(px, py2, col)
+		}
+	}
+}
+
 // FillRect fills a rectangle with a color (clipped to current clip rect).
 func (c *Canvas) FillRect(x, y, w, h int, col color.Color) {
 	if len(c.clipStack) == 0 {
@@ -713,73 +1198,23 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		defer c.PopClip()
 	}
 
-	// Handle clip-path CSS property
+	// Handle clip-path CSS property - apply proper clip shapes
 	if clipPath := box.Style["clip-path"]; clipPath != "" && clipPath != "none" {
-		shape, err := css.ParseClipPath(clipPath)
-		if err == nil && shape.Type != "none" {
-			// Compute bounding box from clip shape
-			var bx, by, bw, bh int
-			switch shape.Type {
-			case "inset":
-				// inset(top right bottom left)
-				bx = contentX + int(shape.InsetTop)
-				by = contentY + int(shape.InsetTop)
-				bw = contentW - int(shape.InsetTop)-int(shape.InsetBottom)
-				bh = contentH - int(shape.InsetTop)-int(shape.InsetBottom)
-				if bw < 0 {
-					bw = 0
-				}
-				if bh < 0 {
-					bh = 0
-				}
-			case "circle", "ellipse":
-				// circle at center with radius
-				r := int(shape.RadiusX)
-				if r == 0 {
-					r = int(math.Min(float64(contentW), float64(contentH)) / 2)
-				}
-				cx := contentX + int(shape.CenterX*float64(contentW)/100)
-				cy := contentY + int(shape.CenterY*float64(contentH)/100)
-				// For simplicity, use bounding box
-				bx = cx - r
-				by = cy - r
-				bw = r * 2
-				bh = r * 2
-			case "polygon":
-				if len(shape.Points) >= 3 {
-					// Find bounding box
-					minX, maxX := shape.Points[0][0], shape.Points[0][0]
-					minY, maxY := shape.Points[0][1], shape.Points[0][1]
-					for _, p := range shape.Points[1:] {
-						if p[0] < minX {
-							minX = p[0]
-						}
-						if p[0] > maxX {
-							maxX = p[0]
-						}
-						if p[1] < minY {
-							minY = p[1]
-						}
-						if p[1] > maxY {
-							maxY = p[1]
-						}
-					}
-					bx = contentX + int(minX*float64(contentW)/100)
-					by = contentY + int(minY*float64(contentH)/100)
-					bw = int((maxX - minX) * float64(contentW) / 100)
-					bh = int((maxY - minY) * float64(contentH) / 100)
-				}
-			}
-			if bw > 0 && bh > 0 {
-				c.PushClip(bx, by, bw, bh)
-				defer c.PopClip()
-			}
+		restoreClip, err := c.applyClipPath(box)
+		if err == nil {
+			defer restoreClip()
 		}
 	}
 
 	// Check visibility - hidden boxes paint background/border/padding but not content
 	visibility, _ := box.Style["visibility"]
 	isHidden := visibility == "hidden"
+
+	// Apply backdrop-filter for fixed/absolute positioned elements
+	// This filters the pixels BEHIND the element before drawing it
+	if !isHidden {
+		c.ApplyBackdropFilter(box)
+	}
 
 	// Text content (only if not hidden)
 	if !isHidden && box.Type == layout.TextBox && box.Node != nil {
@@ -794,6 +1229,11 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Image content
 	if !isHidden && box.Type == layout.ImageBox && box.Node != nil {
 		c.DrawImage(box)
+	}
+
+	// Iframe content
+	if !isHidden && box.Type == layout.IframeBox && box.Node != nil {
+		c.DrawIframe(box)
 	}
 
 	// Input element
@@ -862,6 +1302,25 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Draw list marker if this is a list item
 	if box.Type == layout.ListItemBox {
 		c.DrawListMarker(box)
+	}
+
+	// Apply CSS filter effect to the content area after all content is drawn
+	filterStr := box.Style["filter"]
+	if filterStr != "" && filterStr != "none" {
+		// Filter applies to the content box (inside padding)
+		filterX := contentX + paddingLeft
+		filterY := contentY + paddingTop
+		filterW := contentW - paddingLeft - paddingRight
+		filterH := contentH - paddingTop - paddingBottom
+		if filterW <= 0 {
+			filterW = contentW
+		}
+		if filterH <= 0 {
+			filterH = contentH
+		}
+		if filterW > 0 && filterH > 0 {
+			c.ApplyFilter(box, filterX, filterY, filterW, filterH)
+		}
 	}
 }
 
@@ -1042,7 +1501,7 @@ func (c *Canvas) drawFilledCorner(cx, cy, r int, col color.Color, quadrant int) 
 	}
 }
 
-// DrawText renders text content (placeholder: colored rectangles).
+// DrawText renders text content with proper font rendering.
 func (c *Canvas) DrawText(box *layout.Box) {
 	if box.Node == nil || box.Node.Type != 2 { // NodeText
 		return
@@ -1109,11 +1568,14 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		containerWidth = 800
 	}
 
+	// Font family
+	fontFamily := box.Style["font-family"]
+	if fontFamily == "" {
+		fontFamily = "sans-serif"
+	}
+
 	// Font style (italic)
 	fontStyle := box.Style["font-style"]
-
-	// Font weight (bold chars are wider, light chars are narrower)
-	fontWeight := box.Style["font-weight"]
 
 	// Letter spacing
 	letterSpacing := css.ParseLength(box.Style["letter-spacing"]).Value
@@ -1124,11 +1586,10 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	// Text indent (applied on first line only)
 	textIndent := css.ParseLength(box.Style["text-indent"]).Value
 
-	charWidth := fontSize * 0.6
-	if fontWeight == "bold" || fontWeight == "700" || fontWeight == "800" || fontWeight == "900" {
-		charWidth = fontSize * 0.65
-	} else if fontWeight == "light" || fontWeight == "100" || fontWeight == "200" || fontWeight == "300" {
-		charWidth = fontSize * 0.55
+	// Get font for this text
+	f, advWidth := c.GetFont(fontFamily, fontSize)
+	if advWidth == 0 {
+		advWidth = fontSize * 0.6
 	}
 
 	// Italic slant: make chars slightly wider
@@ -1146,7 +1607,6 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	isPre := box.Style["white-space"] == "pre" || box.Style["white-space"] == "pre-wrap"
 
 	// Check for text-overflow ellipsis
-	// text-overflow applies when overflow-x is hidden and text overflows
 	overflow := box.Style["overflow"]
 	overflowX := box.Style["overflow-x"]
 	textOverflow := box.Style["text-overflow"]
@@ -1185,17 +1645,16 @@ func (c *Canvas) DrawText(box *layout.Box) {
 	// For text-overflow ellipsis, calculate the maximum chars that fit
 	maxChars := len(text)
 	if showEllipsis {
-		// Calculate how many chars fit in the container (accounting for textIndent on first line)
 		availWidth := float64(containerWidth)
 		if isFirstLine {
 			availWidth -= textIndent
 		}
-		ellipsisWidth := charWidth * italicSlant * 2 // "…" is roughly 2 chars wide
+		ellipsisWidth := advWidth * italicSlant * 3 // "…" is roughly 3 chars wide
 		availWidth -= ellipsisWidth
 		if availWidth < 0 {
 			availWidth = 0
 		}
-		maxChars = int(availWidth / (charWidth * italicSlant))
+		maxChars = int(availWidth / (advWidth * italicSlant))
 		if maxChars < 0 {
 			maxChars = 0
 		} else if maxChars > len(text) {
@@ -1207,16 +1666,19 @@ func (c *Canvas) DrawText(box *layout.Box) {
 		// Stop if we've reached the ellipsis limit
 		if showEllipsis && i >= maxChars {
 			// Draw ellipsis at the end
-			ellipsisCW := charWidth * italicSlant * 2 // "…" is roughly 2 chars wide
-			ellipsisH := fontSize
-			if italicSlant > 1 {
-				ellipsisH = fontSize * italicSlant
+			ellipsis := "…"
+			for _, ech := range ellipsis {
+				// Draw shadows first
+				for _, ts := range textShadows {
+					c.DrawGlyph(f, fontSize, currentX+float64(ts.x), currentY+float64(ts.y), ts.color, ech)
+				}
+				c.DrawGlyph(f, fontSize, currentX, currentY, textColor, ech)
+				// Advance cursor
+				face := truetype.NewFace(f, &truetype.Options{Size: fontSize, DPI: 72})
+				dot := fixed.Point26_6{X: fixed.Int26_6(currentX * 64), Y: fixed.Int26_6(currentY * 64)}
+				_, _, _, adv, _ := face.Glyph(dot, ech)
+				currentX += float64(adv) / 64.0 * italicSlant
 			}
-			// Draw multiple text-shadows for ellipsis
-			for _, ts := range textShadows {
-				c.FillRect(int(currentX)+ts.x, int(currentY)+ts.y, int(ellipsisCW), int(ellipsisH), ts.color)
-			}
-			c.FillRect(int(currentX), int(currentY), int(ellipsisCW), int(ellipsisH), textColor)
 			break
 		}
 
@@ -1237,17 +1699,13 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			continue
 		}
 		if ch == '\t' {
-			// tab-size: number of spaces each tab renders
 			tabSize := 8 // default
 			if ts := css.ParseLength(box.Style["tab-size"]).Value; ts > 0 {
 				tabSize = int(ts)
 			}
-			// Calculate tab width in pixels
-			tabWidth := float64(tabSize) * charWidth * italicSlant
-			// Jump to next tab stop
+			tabWidth := float64(tabSize) * advWidth * italicSlant
 			tabStop := math.Ceil((currentX - float64(x)) / tabWidth) * tabWidth
 			currentX = float64(x) + tabStop
-			// Draw tab as space
 			ch = ' '
 		}
 
@@ -1263,7 +1721,14 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			}
 		}
 
-		cw := charWidth*italicSlant + extraLetter
+		// Get the glyph advance width for this character
+		face := truetype.NewFace(f, &truetype.Options{Size: fontSize, DPI: 72})
+		dot := fixed.Point26_6{X: fixed.Int26_6(currentX * 64), Y: fixed.Int26_6(currentY * 64)}
+		_, _, _, adv, ok := face.Glyph(dot, ch)
+		cw := advWidth * italicSlant
+		if ok {
+			cw = float64(adv)/64.0*italicSlant + extraLetter
+		}
 
 		// Wrap line if needed (not in pre mode)
 		canWrap := !isPre
@@ -1278,19 +1743,30 @@ func (c *Canvas) DrawText(box *layout.Box) {
 			if ch == ' ' {
 				continue
 			}
-		}
-
-		charH := fontSize
-		if italicSlant > 1 {
-			charH = fontSize * italicSlant
+			// Recalculate glyph advance at new line position
+			dot = fixed.Point26_6{X: fixed.Int26_6(currentX * 64), Y: fixed.Int26_6(currentY * 64)}
+			_, _, _, adv, ok = face.Glyph(dot, ch)
+			if ok {
+				cw = float64(adv)/64.0*italicSlant + extraLetter
+			}
 		}
 
 		// Draw text-shadow first (behind the text) - multiple shadows
 		for _, ts := range textShadows {
-			c.FillRect(int(currentX)+ts.x, int(currentY)+ts.y, int(cw), int(charH), ts.color)
+			if isEmoji(ch) {
+				c.drawEmojiPlaceholder(currentX+float64(ts.x), currentY+float64(ts.y), fontSize*0.8, ch, ts.color)
+			} else {
+				c.DrawGlyph(f, fontSize, currentX+float64(ts.x), currentY+float64(ts.y), ts.color, ch)
+			}
 		}
 
-		c.FillRect(int(currentX), int(currentY), int(cw), int(charH), textColor)
+		// Draw the actual glyph with proper font rasterization
+		// For emoji characters, use colored placeholder instead of font glyph
+		if isEmoji(ch) {
+			c.drawEmojiPlaceholder(currentX, currentY, fontSize*0.8, ch, textColor)
+		} else {
+			c.DrawGlyph(f, fontSize, currentX, currentY, textColor, ch)
+		}
 
 		// Draw text-decoration (underline, overline, line-through)
 		decorationLine := box.Style["text-decoration-line"]
@@ -1444,6 +1920,89 @@ func (c *Canvas) DrawImage(box *layout.Box) {
 
 	// Draw the image with object-fit and object-position
 	c.drawImageFitted(img, x, y, w, h, objectFit, objectPosition)
+}
+
+// DrawIframe renders an iframe with a placeholder for cross-origin iframes.
+// For same-origin iframes, it could recursively render the nested content.
+func (c *Canvas) DrawIframe(box *layout.Box) {
+	if box.Node == nil || box.Node.Type != html.NodeElement {
+		return
+	}
+
+	src := box.Node.GetAttribute("src")
+	title := box.Node.GetAttribute("title")
+	width := box.Node.GetAttribute("width")
+	height := box.Node.GetAttribute("height")
+
+	// Get dimensions from box (which has CSS/computed dimensions)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+	if w <= 0 {
+		if width != "" {
+			if wVal, err := strconv.Atoi(width); err == nil {
+				w = wVal
+			}
+		}
+		if w <= 0 {
+			w = 300 // browser default
+		}
+	}
+	if h <= 0 {
+		if height != "" {
+			if hVal, err := strconv.Atoi(height); err == nil {
+				h = hVal
+			}
+		}
+		if h <= 0 {
+			h = 150 // browser default
+		}
+	}
+
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+
+	// Draw placeholder background (light gray)
+	c.FillRect(x, y, w, h, css.Color{R: 240, G: 240, B: 240, A: 255})
+
+	// Draw border
+	c.DrawBorder(x, y, w, h, 1, css.Color{R: 180, G: 180, B: 180, A: 255})
+
+	// Determine label text
+	label := "iframe"
+	if title != "" {
+		label = title
+	} else if src != "" {
+		// Truncate long URLs
+		if len(src) > 30 {
+			label = src[:27] + "..."
+		} else {
+			label = src
+		}
+	}
+
+	// Draw lock icon and label text using simple rectangles
+	// Draw a simple lock icon (🔒 placeholder as small rectangle)
+	lockSize := 8
+	lockX := x + 8
+	lockY := y + h/2 - lockSize/2
+	c.FillRect(lockX, lockY, lockSize, lockSize, css.Color{R: 100, G: 100, B: 100, A: 255})
+
+	// Draw text label
+	fontSize := 12.0
+	charWidth := fontSize * 0.6
+	textX := lockX + lockSize + 8
+	maxTextWidth := w - int(textX-x) - 10
+	maxChars := int(float64(maxTextWidth) / charWidth)
+	if maxChars > len(label) {
+		maxChars = len(label)
+	}
+	if maxChars > 0 {
+		textColor := css.Color{R: 80, G: 80, B: 80, A: 255}
+		for i := 0; i < maxChars; i++ {
+			charX := textX + int(float64(i)*charWidth)
+			c.FillRect(charX, y+h/2-int(fontSize/2), int(charWidth), int(fontSize), textColor)
+		}
+	}
 }
 
 // loadImage fetches and decodes an image from a URL.
@@ -2134,7 +2693,19 @@ func (c *Canvas) DrawListMarker(box *layout.Box) {
 		h = 20
 	}
 
-	textColor := css.ParseColor(box.Style["color"])
+	// Use marker-specific color if set (from li::marker { color: ... }), otherwise use element color
+	textColor := css.ParseColor(box.Style["_marker_color"])
+	if textColor.A == 0 {
+		textColor = css.ParseColor(box.Style["color"])
+	}
+
+	// Get marker-specific font-size if set, otherwise use element font-size
+	markerFontSize := 14.0
+	if mfs := box.Style["_marker_font_size"]; mfs != "" {
+		if fs, err := strconv.ParseFloat(mfs, 64); err == nil {
+			markerFontSize = fs
+		}
+	}
 
 	// Draw marker based on type
 	switch marker {
@@ -2148,13 +2719,13 @@ func (c *Canvas) DrawListMarker(box *layout.Box) {
 		}
 		c.drawFilledCorner(x+int(markerWidth)/2, y+h/2, r, textColor, 1)
 	case "decimal", "ol:decimal":
-		// Number — draw simple number representation
-		fontSize := 14.0
+		// Number — draw simple number representation using marker-specific font-size
+		fontSize := markerFontSize
 		charWidth := fontSize * 0.6
 		c.FillRect(x+2, y+h/4, int(charWidth*3), int(fontSize), textColor)
 	case "lower-alpha", "upper-alpha":
-		// Letter
-		fontSize := 14.0
+		// Letter using marker-specific font-size
+		fontSize := markerFontSize
 		charWidth := fontSize * 0.6
 		c.FillRect(x+2, y+h/4, int(charWidth), int(fontSize), textColor)
 	default:
@@ -3020,5 +3591,350 @@ func (c *Canvas) DrawLegend(box *layout.Box) {
 	// Draw legend border
 	if borderWidth > 0 {
 		c.DrawBorder(legendX, legendY, legendW, legendH, borderWidth, borderColor)
+	}
+}
+
+// ApplyFilter applies CSS filter effects to a region of the canvas.
+// It parses the filter string from box.Style["filter"] and applies the effects.
+func (c *Canvas) ApplyFilter(box *layout.Box, x, y, w, h int) {
+	filterStr := box.Style["filter"]
+	if filterStr == "" || filterStr == "none" {
+		return
+	}
+
+	effects, err := css.ParseFilter(filterStr)
+	if err != nil || len(effects) == 0 {
+		return
+	}
+
+	// Create a temporary buffer to hold the original pixels
+	// We need this because filters like blur need to read original pixel values
+	// while writing modified values to the same region
+	srcPixels := image.NewRGBA(image.Rect(0, 0, w, h))
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			srcX := x + dx
+			srcY := y + dy
+			if srcX >= 0 && srcX < c.Width && srcY >= 0 && srcY < c.Height {
+				srcPixels.Set(dx, dy, c.Pixels.At(srcX, srcY))
+			}
+		}
+	}
+
+	// Apply each filter effect in order
+	for _, effect := range effects {
+		switch effect.Type {
+		case "blur":
+			radius := int(effect.Amount)
+			if radius > 10 {
+				radius = 10 // Cap at 10px for performance
+			}
+			if radius > 0 {
+				c.applyBlur(srcPixels, 0, 0, w, h, radius)
+			}
+		case "brightness":
+			c.applyBrightness(srcPixels, 0, 0, w, h, effect.Amount)
+		case "contrast":
+			c.applyContrast(srcPixels, 0, 0, w, h, effect.Amount)
+		case "grayscale":
+			c.applyGrayscale(srcPixels, 0, 0, w, h, effect.Amount)
+		case "sepia":
+			c.applySepia(srcPixels, 0, 0, w, h, effect.Amount)
+		case "hue-rotate":
+			// hue-rotate not implemented yet
+		case "drop-shadow":
+			// drop-shadow is typically applied differently, not as a pixel filter
+			// It's usually drawn as a shadow behind the element
+		}
+	}
+
+	// Copy filtered pixels back to canvas
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			dstX := x + dx
+			dstY := y + dy
+			if dstX >= 0 && dstX < c.Width && dstY >= 0 && dstY < c.Height {
+				c.Pixels.Set(dstX, dstY, srcPixels.At(dx, dy))
+			}
+		}
+	}
+}
+
+// ApplyBackdropFilter applies a CSS backdrop-filter effect to the area behind a fixed/absolute positioned element.
+// It captures the pixels behind the element, applies the filter, and composites them back.
+// This creates effects like blur-behind for modal dialogs.
+func (c *Canvas) ApplyBackdropFilter(box *layout.Box) {
+	backdropFilter := box.Style["backdrop-filter"]
+	if backdropFilter == "" || backdropFilter == "none" {
+		return
+	}
+
+	// Check if element is fixed or absolute positioned
+	position := box.Style["position"]
+	if position != "fixed" && position != "absolute" {
+		return
+	}
+
+	// Get element dimensions
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	effects, err := css.ParseFilter(backdropFilter)
+	if err != nil || len(effects) == 0 {
+		return
+	}
+
+	// Create a buffer to hold the original pixels behind the element
+	srcPixels := image.NewRGBA(image.Rect(0, 0, w, h))
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			srcX := x + dx
+			srcY := y + dy
+			if srcX >= 0 && srcX < c.Width && srcY >= 0 && srcY < c.Height {
+				srcPixels.Set(dx, dy, c.Pixels.At(srcX, srcY))
+			}
+		}
+	}
+
+	// Apply each filter effect in order (same as ApplyFilter)
+	for _, effect := range effects {
+		switch effect.Type {
+		case "blur":
+			radius := int(effect.Amount)
+			if radius > 10 {
+				radius = 10 // Cap at 10px for performance
+			}
+			if radius > 0 {
+				c.applyBlur(srcPixels, 0, 0, w, h, radius)
+			}
+		case "brightness":
+			c.applyBrightness(srcPixels, 0, 0, w, h, effect.Amount)
+		case "contrast":
+			c.applyContrast(srcPixels, 0, 0, w, h, effect.Amount)
+		case "grayscale":
+			c.applyGrayscale(srcPixels, 0, 0, w, h, effect.Amount)
+		case "sepia":
+			c.applySepia(srcPixels, 0, 0, w, h, effect.Amount)
+		case "hue-rotate":
+			// hue-rotate not implemented yet
+		case "drop-shadow":
+			// drop-shadow is typically applied differently
+		}
+	}
+
+	// Copy filtered pixels back to canvas (behind the element)
+	for dy := 0; dy < h; dy++ {
+		for dx := 0; dx < w; dx++ {
+			dstX := x + dx
+			dstY := y + dy
+			if dstX >= 0 && dstX < c.Width && dstY >= 0 && dstY < c.Height {
+				c.Pixels.Set(dstX, dstY, srcPixels.At(dx, dy))
+			}
+		}
+	}
+}
+
+// applyBlur applies a box blur filter to the specified region.
+// It uses a simple 3x3 or 5x5 kernel based on radius.
+func (c *Canvas) applyBlur(pixels *image.RGBA, x, y, w, h, radius int) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	// Create output buffer
+	result := image.NewRGBA(pixels.Bounds())
+
+	// Determine kernel size based on radius
+	kernelSize := 3
+	if radius > 2 {
+		kernelSize = 5
+	}
+	offset := kernelSize / 2
+
+	for py := y; py < y+h; py++ {
+		for px := x; px < x+w; px++ {
+			var rSum, gSum, bSum, aSum float64
+			count := 0.0
+
+			for ky := -offset; ky <= offset; ky++ {
+				for kx := -offset; kx <= offset; kx++ {
+					srcX := px + kx
+					srcY := py + ky
+
+					if srcX >= x && srcX < x+w && srcY >= y && srcY < y+h {
+						r, g, b, a := pixels.At(srcX, srcY).RGBA()
+						rSum += float64(r >> 8)
+						gSum += float64(g >> 8)
+						bSum += float64(b >> 8)
+						aSum += float64(a >> 8)
+						count++
+					}
+				}
+			}
+
+			if count > 0 {
+				newR := uint8(rSum / count)
+				newG := uint8(gSum / count)
+				newB := uint8(bSum / count)
+				newA := uint8(aSum / count)
+				result.Set(px, py, color.RGBA{newR, newG, newB, newA})
+			}
+		}
+	}
+
+	// Copy result back
+	copy(pixels.Pix, result.Pix)
+}
+
+// applyBrightness applies a brightness filter.
+// amount > 1 brightens, amount < 1 darkens, amount = 1 is normal.
+func (c *Canvas) applyBrightness(pixels *image.RGBA, x, y, w, h int, amount float64) {
+	if w <= 0 || h <= 0 || amount <= 0 {
+		return
+	}
+
+	for py := y; py < y+h; py++ {
+		for px := x; px < x+w; px++ {
+			r, g, b, a := pixels.At(px, py).RGBA()
+			newR := float64(r>>8) * amount
+			newG := float64(g>>8) * amount
+			newB := float64(b>>8) * amount
+
+			if newR > 255 {
+				newR = 255
+			}
+			if newG > 255 {
+				newG = 255
+			}
+			if newB > 255 {
+				newB = 255
+			}
+
+			pixels.Set(px, py, color.RGBA{uint8(newR), uint8(newG), uint8(newB), uint8(a >> 8)})
+		}
+	}
+}
+
+// applyContrast adjusts the contrast of the image.
+// amount = 1 is normal, amount > 1 increases contrast, amount = 0 is gray.
+func (c *Canvas) applyContrast(pixels *image.RGBA, x, y, w, h int, amount float64) {
+	if w <= 0 || h <= 0 || amount < 0 {
+		return
+	}
+
+	for py := y; py < y+h; py++ {
+		for px := x; px < x+w; px++ {
+			r, g, b, a := pixels.At(px, py).RGBA()
+			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
+
+			// Apply contrast formula: output = (input - 0.5) * contrast + 0.5
+			newR := (float64(r8)/255.0 - 0.5) * amount + 0.5
+			newG := (float64(g8)/255.0 - 0.5) * amount + 0.5
+			newB := (float64(b8)/255.0 - 0.5) * amount + 0.5
+
+			// Clamp to 0-1 range and convert back to 0-255
+			if newR < 0 {
+				newR = 0
+			}
+			if newR > 1 {
+				newR = 1
+			}
+			if newG < 0 {
+				newG = 0
+			}
+			if newG > 1 {
+				newG = 1
+			}
+			if newB < 0 {
+				newB = 0
+			}
+			if newB > 1 {
+				newB = 1
+			}
+
+			pixels.Set(px, py, color.RGBA{uint8(newR * 255), uint8(newG * 255), uint8(newB * 255), uint8(a >> 8)})
+		}
+	}
+}
+
+// applyGrayscale converts the image to grayscale.
+// amount = 1 is fully grayscale, amount = 0 is unchanged.
+func (c *Canvas) applyGrayscale(pixels *image.RGBA, x, y, w, h int, amount float64) {
+	if w <= 0 || h <= 0 || amount < 0 || amount > 1 {
+		return
+	}
+
+	if amount >= 1 {
+		// Fast path: fully grayscale
+		for py := y; py < y+h; py++ {
+			for px := x; px < x+w; px++ {
+				r, g, b, a := pixels.At(px, py).RGBA()
+				// ITU-R BT.709 luminance coefficients
+				luminance := 0.2126*float64(r>>8) + 0.7152*float64(g>>8) + 0.0722*float64(b>>8)
+				gray := uint8(luminance)
+				pixels.Set(px, py, color.RGBA{gray, gray, gray, uint8(a >> 8)})
+			}
+		}
+	} else {
+		// Partial grayscale
+		invAmount := 1 - amount
+		for py := y; py < y+h; py++ {
+			for px := x; px < x+w; px++ {
+				r, g, b, a := pixels.At(px, py).RGBA()
+				r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
+				luminance := 0.2126*float64(r8) + 0.7152*float64(g8) + 0.0722*float64(b8)
+				newR := amount*luminance + invAmount*float64(r8)
+				newG := amount*luminance + invAmount*float64(g8)
+				newB := amount*luminance + invAmount*float64(b8)
+				pixels.Set(px, py, color.RGBA{uint8(newR), uint8(newG), uint8(newB), uint8(a >> 8)})
+			}
+		}
+	}
+}
+
+// applySepia applies a sepia tone filter.
+// amount = 1 is fully sepia, amount = 0 is unchanged.
+func (c *Canvas) applySepia(pixels *image.RGBA, x, y, w, h int, amount float64) {
+	if w <= 0 || h <= 0 || amount < 0 || amount > 1 {
+		return
+	}
+
+	for py := y; py < y+h; py++ {
+		for px := x; px < x+w; px++ {
+			r, g, b, a := pixels.At(px, py).RGBA()
+			r8, g8, b8 := float64(r>>8), float64(g>>8), float64(b>>8)
+
+			// Sepia transformation matrix
+			// R = min(1, R*0.393 + G*0.769 + B*0.189)
+			// G = min(1, R*0.349 + G*0.686 + B*0.168)
+			// B = min(1, R*0.272 + G*0.534 + B*0.131)
+			newR := r8*0.393 + g8*0.769 + b8*0.189
+			newG := r8*0.349 + g8*0.686 + b8*0.168
+			newB := r8*0.272 + g8*0.534 + b8*0.131
+
+			if newR > 255 {
+				newR = 255
+			}
+			if newG > 255 {
+				newG = 255
+			}
+			if newB > 255 {
+				newB = 255
+			}
+
+			// Blend with original based on amount
+			invAmount := 1 - amount
+			finalR := amount*newR + invAmount*r8
+			finalG := amount*newG + invAmount*g8
+			finalB := amount*newB + invAmount*b8
+
+			pixels.Set(px, py, color.RGBA{uint8(finalR), uint8(finalG), uint8(finalB), uint8(a >> 8)})
+		}
 	}
 }

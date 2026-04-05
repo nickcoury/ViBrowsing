@@ -20,7 +20,7 @@ func main() {
     doc := html.Parse(htmlData)
     cssRules := css.Parse("")
 
-    box := layout.BuildLayoutTree(doc, cssRules)
+    box := layout.BuildLayoutTree(doc, cssRules, 800, 600)
 
     // Monkey-patch: add debug to the layout by wrapping
     // Just run layout and print

@@ -33,7 +33,7 @@ func main() {
 			cssRules1 = append(cssRules1, css.Parse(sheet)...)
 		}
 	}
-	box1 := layout.BuildLayoutTree(dom1, cssRules1)
+	box1 := layout.BuildLayoutTree(dom1, cssRules1, 800, 600)
 	if box1 != nil {
 		layout.LayoutBlock(box1, 800)
 		printTree(box1, 0)
@@ -52,7 +52,7 @@ func main() {
 	fmt.Println("\n=== Test 2: Basic page layout ===")
 	dom2 := html.Parse([]byte(testHTML2))
 	cssRules2 := css.Parse("")
-	box2 := layout.BuildLayoutTree(dom2, cssRules2)
+	box2 := layout.BuildLayoutTree(dom2, cssRules2, 800, 600)
 	if box2 != nil {
 		layout.LayoutBlock(box2, 800)
 		printTree(box2, 0)

@@ -56,7 +56,7 @@ func TestIntegration_DOMToLayoutTree(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := html.Parse([]byte(tc.html))
 			rules := css.Parse(tc.css)
-			box := layout.BuildLayoutTree(doc, rules)
+			box := layout.BuildLayoutTree(doc, rules, 800, 600)
 			if box == nil {
 				t.Error("box tree was nil")
 			}
@@ -95,7 +95,7 @@ func TestIntegration_LayoutDimensions(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := html.Parse([]byte("<html><body>" + tc.html + "</body></html>"))
-			box := layout.BuildLayoutTree(doc, nil)
+			box := layout.BuildLayoutTree(doc, nil, 800, 600)
 			if box == nil {
 				t.Skip("could not build layout tree")
 			}
@@ -131,7 +131,7 @@ func TestIntegration_EndToEndPages(t *testing.T) {
 
 			// Build layout tree
 			rules := css.Parse("")
-			box := layout.BuildLayoutTree(doc, rules)
+			box := layout.BuildLayoutTree(doc, rules, 800, 600)
 			if box == nil {
 				t.Fatal("layout tree was nil")
 			}
@@ -146,7 +146,7 @@ func TestIntegration_CSSCascade(t *testing.T) {
 	// Test that CSS cascade applies correctly
 	doc := html.Parse([]byte(`<div id="a" class="b">x</div>`))
 	rules := css.Parse(`#a { color: red; } .b { color: blue; }`)
-	box := layout.BuildLayoutTree(doc, rules)
+	box := layout.BuildLayoutTree(doc, rules, 800, 600)
 	if box == nil {
 		t.Fatal("box was nil")
 	}
@@ -175,7 +175,7 @@ func TestIntegration_MalformedInput(t *testing.T) {
 			_ = tokens
 			doc := html.Parse([]byte(input))
 			if doc != nil {
-				_ = layout.BuildLayoutTree(doc, nil)
+				_ = layout.BuildLayoutTree(doc, nil, 800, 600)
 			}
 		})
 	}
@@ -188,7 +188,7 @@ func TestIntegration_LargeDocument(t *testing.T) {
 	if doc == nil {
 		t.Fatal("doc was nil")
 	}
-	box := layout.BuildLayoutTree(doc, nil)
+	box := layout.BuildLayoutTree(doc, nil, 800, 600)
 	if box == nil {
 		t.Fatal("box was nil")
 	}
@@ -222,7 +222,7 @@ func BenchmarkIntegration_FullPipeline(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		for _, item := range docs {
 			_ = html.Parse(item.data)
-			box := layout.BuildLayoutTree(item.doc, item.rules)
+			box := layout.BuildLayoutTree(item.doc, item.rules, 800, 600)
 			if box != nil {
 				layout.LayoutBlock(box, 1024)
 			}

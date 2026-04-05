@@ -1,12 +1,15 @@
 package layout
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 )
+
+// MaxDOMDepth is the maximum allowed DOM nesting depth before stopping recursion.
+// Pages with >10,000 levels of nesting can cause stack overflow in recursive layout.
+const MaxDOMDepth = 10000
 
 // LayoutContext holds layout state for a single layout pass.
 type LayoutContext struct {
@@ -26,6 +29,68 @@ type LayoutContext struct {
 	LineBoxMaxDescent float64 // max height below baseline
 	LineBoxStartY float64 // Y where current line box started
 	LineBoxChildren [] *Box // children in current line box for deferred vertical-align
+
+	// Depth tracking to prevent stack overflow from deeply nested DOM
+	Depth int // current nesting depth in layout recursion
+}
+
+// resolveLength resolves a CSS length value that may contain calc() expressions.
+// propName: the CSS property name (e.g., "width", "margin-top")
+// box: the box to get the property value from
+// containingDim: the dimension to use for resolving percentages (e.g., containing block width or height)
+func resolveLength(propName string, box *Box, containingDim float64) float64 {
+	value := box.Style[propName]
+	if value == "" {
+		return 0
+	}
+
+	// Use EvaluateCalcProperty which handles calc() and falls back to ParseLength
+	return css.EvaluateCalcProperty(value, func(unit string) float64 {
+		if unit == "%" {
+			return containingDim
+		}
+		return 0
+	})
+}
+
+// resolveLengthWithFont resolves a CSS length value that may contain calc() expressions.
+// It also handles em units by using the provided fontSize.
+// propName: the CSS property name (e.g., "margin-top")
+// box: the box to get the property value from
+// containingDim: the dimension to use for resolving percentages
+// fontSize: the font size to use for resolving em units
+func resolveLengthWithFont(propName string, box *Box, containingDim float64, fontSize float64) float64 {
+	value := box.Style[propName]
+	if value == "" {
+		return 0
+	}
+
+	// Check if value contains calc()
+	if strings.Contains(value, "calc(") {
+		return css.EvaluateCalcProperty(value, func(unit string) float64 {
+			switch unit {
+			case "%":
+				return containingDim
+			case "em":
+				return fontSize
+			case "rem":
+				return 16 // default root font size
+			}
+			return 0
+		})
+	}
+
+	// No calc(), use ParseLength directly
+	l := css.ParseLength(value)
+	switch l.Unit {
+	case css.UnitPercent:
+		return containingDim * l.Value / 100
+	case css.UnitEm:
+		return l.Value * fontSize
+	case css.UnitRem:
+		return l.Value * 16
+	}
+	return l.Value
 }
 
 // LayoutBlock performs block-level layout on a box tree.
@@ -37,14 +102,10 @@ func LayoutBlock(root *Box, containingWidth float64) {
 		Y:      0,
 		FloatRightEdge: containingWidth,
 		FontSize:        16,
+		Depth:           0,
 	}
 
-	// DEBUG
-	fmt.Printf("DEBUG LayoutBlock START: root=%s ctx.Y=%.1f ctx.FontSize=%.1f\n", root.Node.TagName, ctx.Y, ctx.FontSize)
-
 	layoutChildren(root, ctx)
-
-	fmt.Printf("DEBUG LayoutBlock END: root=%s ctx.Y=%.1f root.ContentY=%.1f root.ContentH=%.1f\n", root.Node.TagName, ctx.Y, root.ContentY, root.ContentH)
 
 	// Set root dimensions after laying out children
 	// For the root (body), ContentW is the containing width and ContentH is the total height
@@ -118,6 +179,15 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 	ctx.LineBoxStartY = ctx.Y
 	ctx.LineBoxChildren = nil
 
+	// Check depth limit to prevent stack overflow
+	ctx.Depth++
+	if ctx.Depth > MaxDOMDepth {
+		log.Printf("WARNING: Max DOM depth %d exceeded, stopping layout recursion at element %s",
+			MaxDOMDepth, box.Node.TagName)
+		return
+	}
+	defer func() { ctx.Depth-- }()
+
 	for _, child := range box.Children {
 		switch child.Type {
 		case BlockBox:
@@ -131,9 +201,7 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			// Reset X cursor to content area edge for block children
 			// Inline content may have advanced ctx.X past the content area
 			ctx.X = box.ContentX
-			fmt.Printf("DEBUG layoutChildren BLOCK: child=%s before layoutBlockChild ctx.Y=%.1f\n", child.Node.TagName, ctx.Y)
 			layoutBlockChild(child, ctx)
-			fmt.Printf("DEBUG layoutChildren BLOCK: child=%s after layoutBlockChild ctx.Y=%.1f\n", child.Node.TagName, ctx.Y)
 		case FlexBox:
 			applyVerticalAlignments(ctx)
 			ctx.LineBoxBaseline = 0
@@ -176,15 +244,7 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			layoutTableCell(child, ctx)
 		case InlineBox, TextBox:
 			prevY := ctx.Y
-			dataPreview := child.Node.Data
-			if len(dataPreview) > 15 {
-				dataPreview = dataPreview[:15] + "..."
-			}
-			fmt.Printf("DEBUG InlineBox BEFORE: data=%q tag=%s box.Type=%d parent=%s ctx.Y=%.1f LineBoxStartY=%.1f\n",
-				dataPreview, child.Node.TagName, child.Type, box.Node.TagName, ctx.Y, ctx.LineBoxStartY)
 			layoutInlineChild(child, box, ctx)
-			fmt.Printf("DEBUG InlineBox AFTER: data=%q ContentY=%.1f ContentH=%.1f ctx.Y=%.1f LineBoxStartY=%.1f\n",
-				dataPreview, child.ContentY, child.ContentH, ctx.Y, ctx.LineBoxStartY)
 			// Check if we wrapped to a new line
 			if ctx.Y > prevY {
 				// New line started — flush previous line box
@@ -195,7 +255,7 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 				ctx.LineBoxStartY = ctx.Y
 				ctx.LineBoxChildren = nil
 			}
-		case ButtonBox, SelectBox, TextAreaBox, LabelBox, MediaBox:
+		case ButtonBox, SelectBox, TextAreaBox, LabelBox, MediaBox, IframeBox:
 			// These are inline-level elements treated like inline boxes
 			prevY := ctx.Y
 			layoutInlineChild(child, box, ctx)
@@ -227,10 +287,10 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 // layoutFloatChild positions a floated element.
 func layoutFloatChild(box *Box, ctx *LayoutContext) {
 	float := box.Style["float"]
-	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
-	marginRight := css.ParseLength(box.Style["margin-right"]).Value
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	_ = css.ParseLength(box.Style["margin-bottom"]).Value // not used for floats
+	marginLeft := resolveLength("margin-left", box, ctx.Width)
+	marginRight := resolveLength("margin-right", box, ctx.Width)
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	_ = resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize) // not used for floats
 
 	// Width of the float
 	floatWidth := computeWidth(box, ctx.Width)
@@ -326,25 +386,8 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	width := computeWidth(box, availWidth)
 
 	// Margin collapsing: top margin of first block child collapses with parent's top
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
-
-	// Resolve em units in margins using the parent's font-size
-	parentFontSize := 16.0
-	if ctx.FontSize > 0 {
-		parentFontSize = ctx.FontSize
-	}
-	unitTop := css.ParseLength(box.Style["margin-top"]).Unit
-	unitBottom := css.ParseLength(box.Style["margin-bottom"]).Unit
-	if marginTop > 0 && unitTop == css.UnitEm {
-		marginTop = marginTop * parentFontSize
-	}
-	if marginBottom > 0 && unitBottom == css.UnitEm {
-		marginBottom = marginBottom * parentFontSize
-	}
-
-	fmt.Printf("DEBUG layoutBlockChild: box=%s marginTop=%.1f(%.0f) marginBottom=%.1f ctx.Y=%.1f parentFontSize=%.1f\n",
-		box.Node.TagName, marginTop, css.ParseLength(box.Style["margin-top"]).Value, marginBottom, ctx.Y, parentFontSize)
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
 
 	// Compute y position: start at FloatBottom if we're below floats
 	// (ctx.Y might be below floats already, or at original cursor)
@@ -355,7 +398,7 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	if ctx.FloatLeftEdge > 0 {
 		xPos = ctx.FloatLeftEdge
 	}
-	box.ContentX = xPos + css.ParseLength(box.Style["margin-left"]).Value
+	box.ContentX = xPos + resolveLength("margin-left", box, ctx.Width)
 
 	// Check if box overlaps floats — if so, move to next line below FloatBottom
 	boxEndX := box.ContentX + width
@@ -367,7 +410,7 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 		ctx.FloatRightEdge = ctx.Width
 		ctx.FloatBottom = 0
 		box.ContentY = ctx.Y + marginTop
-		box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+		box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
 		// Recompute width after float clearing
 		width = computeWidth(box, ctx.Width)
 		box.ContentW = width
@@ -393,8 +436,6 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	if ctx.FloatBottom > nextY {
 		nextY = ctx.FloatBottom
 	}
-	fmt.Printf("DEBUG layoutBlockChild END: box=%s ContentY=%.1f ContentH=%.1f marginBottom=%.1f nextY=%.1f -> ctx.Y=%.1f\n",
-		box.Node.TagName, box.ContentY, box.ContentH, marginBottom, nextY, nextY)
 	ctx.Y = nextY
 
 	// Clear floats after a block that was pushed below them
@@ -571,11 +612,14 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 	}
 	box.ContentH = lineHeightPx
 
-	// Track line box metrics
-	if box.ContentH > ctx.LineBoxMaxAscent+ctx.LineBoxMaxDescent {
-		// New total line height — adjust
-		extra := box.ContentH - (ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent)
-		ctx.LineBoxMaxDescent += extra
+	// Track line box metrics - split into ascent (above baseline) and descent (below)
+	ascent := box.ContentH * 0.75
+	descent := box.ContentH * 0.25
+	if ascent > ctx.LineBoxMaxAscent {
+		ctx.LineBoxMaxAscent = ascent
+	}
+	if descent > ctx.LineBoxMaxDescent {
+		ctx.LineBoxMaxDescent = descent
 	}
 
 	// Add to line box
@@ -587,8 +631,8 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		}
 	} else {
 		// Inline element box
-		marginLeft := css.ParseLength(box.Style["margin-left"]).Value
-		marginRight := css.ParseLength(box.Style["margin-right"]).Value
+		marginLeft := resolveLength("margin-left", box, ctx.Width)
+		marginRight := resolveLength("margin-right", box, ctx.Width)
 		width := computeWidth(box, ctx.Width)
 
 		// Check if we need to wrap first
@@ -621,10 +665,10 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 // layoutFlexContainer performs flex layout for a flex container box.
 func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 	width := computeWidth(box, ctx.Width)
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
 
-	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+	box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
 	box.ContentY = ctx.Y + marginTop
 	box.ContentW = width
 
@@ -667,11 +711,11 @@ func layoutFlexContainer(box *Box, ctx *LayoutContext) {
 		if fs, ok := child.Style["flex-shrink"]; ok {
 			flexShrink, _ = strconv.ParseFloat(fs, 64)
 		}
-		flexBasis := css.ParseLength(child.Style["flex-basis"]).Value
+		flexBasis := resolveLength("flex-basis", child, width)
 		if flexBasis == 0 && child.Style["flex-basis"] != "0" {
-			flexBasis = css.ParseLength(child.Style["width"]).Value
+			flexBasis = resolveLength("width", child, width)
 		}
-		itemMinW := css.ParseLength(child.Style["width"]).Value
+		itemMinW := resolveLength("width", child, width)
 		if itemMinW == 0 {
 			itemMinW = 50 // fallback min size
 		}
@@ -1015,6 +1059,8 @@ func layoutChild(child *Box, parent *Box, ctx *LayoutContext) {
 		layoutPositionedChild(child, ctx)
 	case ImageBox:
 		layoutImageChild(child, ctx)
+	case IframeBox:
+		layoutIframeChild(child, ctx)
 	case ListItemBox:
 		layoutListItemChild(child, ctx)
 	default:
@@ -1029,22 +1075,40 @@ func layoutImageChild(box *Box, ctx *LayoutContext) {
 	}
 
 	width := computeWidth(box, ctx.Width)
-	height := css.ParseLength(box.Style["height"]).Value
+	height := resolveLength("height", box, ctx.Height)
 
-	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
-	box.ContentY = ctx.Y + css.ParseLength(box.Style["margin-top"]).Value
+	box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
+	box.ContentY = ctx.Y + resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
 	box.ContentW = width
 	box.ContentH = height
 
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
+	ctx.Y += box.ContentH + marginBottom
+}
+
+// layoutIframeChild handles layout for iframe elements.
+func layoutIframeChild(box *Box, ctx *LayoutContext) {
+	if box.Node == nil {
+		return
+	}
+
+	width := computeWidth(box, ctx.Width)
+	height := resolveLength("height", box, ctx.Height)
+
+	box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
+	box.ContentY = ctx.Y + resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	box.ContentW = width
+	box.ContentH = height
+
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
 	ctx.Y += box.ContentH + marginBottom
 }
 
 // layoutListItemChild handles layout for li elements with list markers.
 func layoutListItemChild(box *Box, ctx *LayoutContext) {
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
-	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
+	marginLeft := resolveLength("margin-left", box, ctx.Width)
 
 	// Marker width (space for bullet/number)
 	markerWidth := 20.0
@@ -1127,44 +1191,51 @@ func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 		position = "relative"
 	}
 
-	top := css.ParseLength(box.Style["top"])
-	left := css.ParseLength(box.Style["left"])
-	right := css.ParseLength(box.Style["right"])
-	bottom := css.ParseLength(box.Style["bottom"])
+	// Parse for IsAuto check - resolveLength doesn't return IsAuto
+	topLen := css.ParseLength(box.Style["top"])
+	leftLen := css.ParseLength(box.Style["left"])
+	rightLen := css.ParseLength(box.Style["right"])
+	bottomLen := css.ParseLength(box.Style["bottom"])
+
+	// Resolve actual values with calc() evaluation
+	top := resolveLengthWithFont("top", box, ctx.Height, ctx.FontSize)
+	left := resolveLengthWithFont("left", box, ctx.Width, ctx.FontSize)
+	right := resolveLengthWithFont("right", box, ctx.Width, ctx.FontSize)
+	bottom := resolveLengthWithFont("bottom", box, ctx.Height, ctx.FontSize)
 
 	width := computeWidth(box, ctx.Width)
 
 	if position == "relative" {
 		// Relative: offset from normal position
-		box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
-		box.ContentY = ctx.Y + css.ParseLength(box.Style["margin-top"]).Value
-		if !left.IsAuto {
-			box.ContentX = ctx.X + left.Value
-		} else if !right.IsAuto {
+		box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
+		box.ContentY = ctx.Y + resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+		if !leftLen.IsAuto {
+			box.ContentX = ctx.X + left
+		} else if !rightLen.IsAuto {
 			// right offset with auto left: position from right edge
-			box.ContentX = ctx.X + ctx.Width - width - right.Value
+			box.ContentX = ctx.X + ctx.Width - width - right
 		}
-		if !top.IsAuto {
-			box.ContentY = ctx.Y + top.Value
-		} else if !bottom.IsAuto {
+		if !topLen.IsAuto {
+			box.ContentY = ctx.Y + top
+		} else if !bottomLen.IsAuto {
 			// bottom offset with auto top: position from bottom edge
-			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom.Value
+			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom
 		}
 	} else {
 		// Absolute: removed from flow, positioned relative to containing block
 		box.ContentX = ctx.X
 		box.ContentY = ctx.Y
-		if !left.IsAuto {
-			box.ContentX = ctx.X + left.Value
-		} else if !right.IsAuto {
+		if !leftLen.IsAuto {
+			box.ContentX = ctx.X + left
+		} else if !rightLen.IsAuto {
 			// right offset with auto left: position from right edge
-			box.ContentX = ctx.X + ctx.Width - width - right.Value
+			box.ContentX = ctx.X + ctx.Width - width - right
 		}
-		if !top.IsAuto {
-			box.ContentY = ctx.Y + top.Value
-		} else if !bottom.IsAuto {
+		if !topLen.IsAuto {
+			box.ContentY = ctx.Y + top
+		} else if !bottomLen.IsAuto {
 			// bottom offset with auto top: position from bottom edge
-			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom.Value
+			box.ContentY = ctx.Y + ctx.Height - box.ContentH - bottom
 		}
 	}
 
@@ -1172,8 +1243,8 @@ func layoutPositionedChild(box *Box, ctx *LayoutContext) {
 	box.ContentH = computeHeight(box, ctx)
 
 	// For absolute with right/bottom but auto left/right: fit width between left and right
-	if position == "absolute" && !right.IsAuto && left.IsAuto {
-		box.ContentW = ctx.Width - (box.ContentX - ctx.X) - right.Value
+	if position == "absolute" && !rightLen.IsAuto && leftLen.IsAuto {
+		box.ContentW = ctx.Width - (box.ContentX - ctx.X) - right
 		if box.ContentW < 0 {
 			box.ContentW = 0
 		}
@@ -1193,12 +1264,12 @@ func computeWidth(box *Box, containingWidth float64) float64 {
 
 	// Handle auto
 	if widthStr == "auto" || widthStr == "" {
-		marginLeft := css.ParseLength(box.Style["margin-left"]).Value
-		marginRight := css.ParseLength(box.Style["margin-right"]).Value
-		paddingLeft := css.ParseLength(box.Style["padding-left"]).Value
-		paddingRight := css.ParseLength(box.Style["padding-right"]).Value
-		borderLeft := css.ParseLength(box.Style["border-width"]).Value
-		borderRight := css.ParseLength(box.Style["border-width"]).Value
+		marginLeft := resolveLength("margin-left", box, containingWidth)
+		marginRight := resolveLength("margin-right", box, containingWidth)
+		paddingLeft := resolveLength("padding-left", box, containingWidth)
+		paddingRight := resolveLength("padding-right", box, containingWidth)
+		borderLeft := resolveLength("border-width", box, containingWidth)
+		borderRight := resolveLength("border-width", box, containingWidth)
 
 		return containingWidth - marginLeft - marginRight - paddingLeft - paddingRight - borderLeft - borderRight
 	}
@@ -1265,9 +1336,9 @@ func computeHeight(box *Box, childCtx *LayoutContext) float64 {
 // It manages the overall table dimensions and hosts table sections/rows.
 func layoutTableContainer(box *Box, ctx *LayoutContext) {
 	width := computeWidth(box, ctx.Width)
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginLeft := resolveLength("margin-left", box, ctx.Width)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
 
 	box.ContentX = ctx.X + marginLeft
 	box.ContentY = ctx.Y + marginTop
@@ -1342,8 +1413,8 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 // layoutCaption handles layout for a table caption.
 func layoutCaption(box *Box, ctx *LayoutContext, side string) {
 	width := computeWidth(box, ctx.Width)
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
 
 	box.ContentX = ctx.X
 	box.ContentY = ctx.Y + marginTop
@@ -1465,9 +1536,9 @@ func layoutTableCell(box *Box, ctx *LayoutContext) {
 // layoutMultiColumn handles CSS multi-column layout (column-count, column-width, column-gap).
 func layoutMultiColumn(box *Box, ctx *LayoutContext, columnCount int, columnWidth float64, columnGap float64) {
 	width := computeWidth(box, ctx.Width)
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
 
-	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
+	box.ContentX = ctx.X + resolveLength("margin-left", box, ctx.Width)
 	box.ContentY = ctx.Y + marginTop
 	box.ContentW = width
 
@@ -1593,9 +1664,9 @@ func layoutMultiColumn(box *Box, ctx *LayoutContext, columnCount int, columnWidt
 // and the rest of the content flowing below.
 func layoutFieldset(box *Box, ctx *LayoutContext) {
 	width := computeWidth(box, ctx.Width)
-	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
-	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+	marginTop := resolveLengthWithFont("margin-top", box, ctx.Height, ctx.FontSize)
+	marginBottom := resolveLengthWithFont("margin-bottom", box, ctx.Height, ctx.FontSize)
+	marginLeft := resolveLength("margin-left", box, ctx.Width)
 
 	box.ContentX = ctx.X + marginLeft
 	box.ContentY = ctx.Y + marginTop

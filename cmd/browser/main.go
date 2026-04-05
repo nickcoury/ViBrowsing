@@ -208,7 +208,7 @@ func navigateToURL(browser *BrowserState, url, userAgent string, viewportW, view
 	}
 
 	// Build layout tree
-	layoutBox := layout.BuildLayoutTree(dom, cssRules)
+	layoutBox := layout.BuildLayoutTree(dom, cssRules, viewportW, viewportH)
 	if layoutBox == nil {
 		fmt.Println("No layout (no body found)")
 		return nil

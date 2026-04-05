@@ -20,6 +20,7 @@ const (
 	FlexBox
 	PositionedBox
 	ImageBox
+	IframeBox
 	ListItemBox
 	HorizontalRuleBox
 	TableBox
@@ -159,15 +160,19 @@ func (b *Box) OuterHeight() float64 {
 }
 
 // BuildLayoutTree converts a DOM tree to a layout tree.
-func BuildLayoutTree(doc *html.Node, rules []css.Rule) *Box {
+// It filters CSS rules by the viewport dimensions for @media query matching.
+func BuildLayoutTree(doc *html.Node, rules []css.Rule, viewportWidth int, viewportHeight int) *Box {
 	// Find body
 	body := findBody(doc)
 	if body == nil {
 		return nil
 	}
 
+	// Filter rules by media queries
+	filteredRules := css.FilterRulesByMedia(rules, viewportWidth, viewportHeight)
+
 	// Build layout tree recursively
-	box := buildBox(body, rules, 0, nil)
+	box := buildBox(body, filteredRules, 0, nil)
 	return box
 }
 
@@ -285,6 +290,15 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = InlineBox
 	case "img":
 		box.Type = ImageBox
+	case "iframe":
+		box.Type = IframeBox
+		// Default iframe size: 300x150 (browser default)
+		if _, ok := style["width"]; !ok {
+			box.Style["width"] = "300"
+		}
+		if _, ok := style["height"]; !ok {
+			box.Style["height"] = "150"
+		}
 	case "li":
 		box.Type = ListItemBox
 	case "input":

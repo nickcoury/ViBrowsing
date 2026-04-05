@@ -69,6 +69,10 @@ type Parser struct {
 	// templateDepth tracks nesting depth of <template> elements
 	// when > 0, we still parse DOM but don't create boxes during layout
 	templateDepth int
+
+	// templateContentNode is the document fragment being built for the current <template>
+	// When inside a template, children are appended here instead of the template node's Children
+	templateContentNode *Node
 }
 
 // NewParser creates a new parser from tokens.
@@ -132,6 +136,14 @@ func (p *Parser) Parse() *Node {
 			// Track template entry
 			if tagName == "template" {
 				p.templateDepth++
+				// Create a new document fragment to hold the template's content
+				// This is the "inert document fragment" per HTML5 spec
+				p.templateContentNode = &Node{
+					Type:    NodeDocument,
+					TagName: "#document-fragment",
+				}
+				// Set display:none on the template node so it takes no layout space
+				node.SetAttribute("style", "display: none")
 			}
 
 			// Track foreign content entry (svg/math) BEFORE HTML-specific rules.
@@ -187,7 +199,12 @@ func (p *Parser) Parse() *Node {
 
 			// Append to parent
 			if len(p.openStack) > 0 {
-				p.openStack[len(p.openStack)-1].AppendChild(node)
+				if p.templateDepth > 0 && p.templateContentNode != nil {
+					// Inside <template>: append to the template content fragment
+					p.templateContentNode.AppendChild(node)
+				} else {
+					p.openStack[len(p.openStack)-1].AppendChild(node)
+				}
 			}
 
 			// Void elements don't go on the stack in HTML context.
@@ -214,6 +231,17 @@ func (p *Parser) Parse() *Node {
 
 			// Track template exit
 			if tagName == "template" && p.templateDepth > 0 {
+				// Find the template node in the open stack and store the content
+				for i := len(p.openStack) - 1; i >= 0; i-- {
+					if p.openStack[i].TagName == "template" {
+						// Assign the parsed content to TemplateContent
+						p.openStack[i].TemplateContent = p.templateContentNode
+						// Clear the template node's children - content is in TemplateContent only
+						p.openStack[i].Children = nil
+						break
+					}
+				}
+				p.templateContentNode = nil
 				p.templateDepth--
 			}
 
@@ -281,10 +309,18 @@ func (p *Parser) Parse() *Node {
 						fosterParent := p.openStack[fosterIdx-1]
 						fosterParent.AppendChild(NewText(text))
 					} else if len(p.openStack) > 0 {
-						p.openStack[len(p.openStack)-1].AppendChild(NewText(text))
+						if p.templateDepth > 0 && p.templateContentNode != nil {
+							p.templateContentNode.AppendChild(NewText(text))
+						} else {
+							p.openStack[len(p.openStack)-1].AppendChild(NewText(text))
+						}
 					}
 				} else if len(p.openStack) > 0 {
-					p.openStack[len(p.openStack)-1].AppendChild(NewText(text))
+					if p.templateDepth > 0 && p.templateContentNode != nil {
+						p.templateContentNode.AppendChild(NewText(text))
+					} else {
+						p.openStack[len(p.openStack)-1].AppendChild(NewText(text))
+					}
 				}
 			}
 			p.advance()

@@ -45,8 +45,11 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"letter-spacing":  "0",
 		"word-spacing":    "0",
 		"text-transform":  "none",
+		"text-justify":    "auto",
+		"hyphens":         "manual",
 		"font-variant":    "normal",
 		"unicode-bidi":   "normal",
+		"unicode-range":   "U+0-FFFF",
 		"direction":      "ltr",
 		"writing-mode":   "horizontal-tb",
 		"tab-size":       "8",
@@ -88,6 +91,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"outline-width":   "0",
 		"outline-style":   "none",
 		"outline-color":   "black",
+		"outline-offset":  "0",
 		"box-shadow":      "none",
 		"cursor":          "auto",
 		"transform":       "none",
@@ -135,6 +139,9 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"text-decoration-line":   "none",
 		"text-decoration-color":  "currentColor",
 		"text-decoration-style": "solid",
+		"text-decoration-thickness": "auto",
+		"text-underline-offset": "0",
+		"text-decoration-skip-ink": "auto",
 		"will-change":         "auto",
 		"image-rendering":     "auto",
 		"caption-side":        "top",
@@ -295,8 +302,11 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"letter-spacing":  "0",
 		"word-spacing":    "0",
 		"text-transform":  "none",
+		"text-justify":    "auto",
+		"hyphens":         "manual",
 		"font-variant":    "normal",
 		"unicode-bidi":   "normal",
+		"unicode-range":   "U+0-FFFF",
 		"direction":      "ltr",
 		"writing-mode":   "horizontal-tb",
 		"tab-size":       "8",
@@ -338,6 +348,7 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"outline-width":   "0",
 		"outline-style":   "none",
 		"outline-color":   "black",
+		"outline-offset":  "0",
 		"box-shadow":      "none",
 		"cursor":          "auto",
 		"transform":       "none",
@@ -378,6 +389,9 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"text-decoration-line":   "none",
 		"text-decoration-color":  "currentColor",
 		"text-decoration-style": "solid",
+		"text-decoration-thickness": "auto",
+		"text-underline-offset": "0",
+		"text-decoration-skip-ink": "auto",
 		"will-change":         "auto",
 		"image-rendering":     "auto",
 		"caption-side":        "top",
@@ -605,7 +619,7 @@ func matchSelector(tagName, class, id, selector string) bool {
 			// Descendant combinator — skip whitespace
 			sel = sel[1:]
 		} else if sel[0] == ':' {
-			// Pseudo-class or pseudo-element — skip
+			// Pseudo-class or pseudo-element (::before, ::after, ::marker) — skip
 			sel = sel[1:]
 			if len(sel) > 0 && sel[0] == ':' {
 				sel = sel[1:]
@@ -761,7 +775,7 @@ func parseAttributeSelector(selector string) (string, string, string) {
 
 // MatchNodeSelector returns true if the element node matches the full CSS selector.
 // This handles tag names, IDs, classes, attribute selectors ([attr], [attr=value], etc.),
-// pseudo-classes (:hover, :first-child, :not(), :nth-child()), pseudo-elements (::before, ::after),
+// pseudo-classes (:hover, :first-child, :not(), :nth-child()), pseudo-elements (::before, ::after, ::marker),
 // and combinators (descendant space, child >, adjacent sibling +, general sibling ~).
 func MatchNodeSelector(node *html.Node, selector string) bool {
 	if node == nil || node.Type != html.NodeElement {
@@ -1020,7 +1034,7 @@ func matchSimpleSelector(node *html.Node, selector string) bool {
 				return false
 			}
 			if sel[0] == ':' {
-				// Pseudo-element (::before, ::after) — for now, treated as matching
+				// Pseudo-element (::before, ::after, ::marker) — for now, treated as matching
 				sel = sel[1:]
 				continue
 			}
@@ -1163,6 +1177,13 @@ func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
 	case "not":
 		// :not(selector) — matches if the argument selector does NOT match
 		return MatchNot(node, pseudoArg)
+	case "is":
+		// :is(selector list) — matches if ANY selector in the list matches (forgiving)
+		return MatchIsWherePseudoClass(node, pseudoArg)
+	case "where":
+		// :where(selector list) — same as :is() but has 0 specificity
+		// Matching logic is identical to :is()
+		return MatchIsWherePseudoClass(node, pseudoArg)
 	case "hover", "focus", "active", "visited", "link":
 		// State pseudo-classes — for now, treat as matching (no interactivity state tracking)
 		return true
@@ -1192,9 +1213,18 @@ func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
 		// Non-form elements are implicitly enabled
 		return true
 	case "focus-visible":
-		// :focus-visible matches elements with focus that should show a focus indicator
-		// Currently treat as matching if :focus would match (keyboard focus state tracking not implemented)
-		return node.HasAttribute("tabindex") || node.HasAttribute("contenteditable")
+		// :focus-visible matches elements with focus that should show a focus indicator.
+		// Since we don't have real input system tracking, we match elements that are
+		// keyboard-focusable: those with tabindex OR focusable form elements.
+		if node.HasAttribute("tabindex") {
+			return true
+		}
+		tag := strings.ToLower(node.TagName)
+		switch tag {
+		case "input", "button", "select", "textarea", "a", "area":
+			return true
+		}
+		return false
 	case "lang":
 		// :lang(en) matches elements with lang attribute starting with the given language code
 		if pseudoArg == "" {
@@ -1216,6 +1246,40 @@ func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
 		return IsInvalid(node)
 	case "placeholder-shown":
 		return PlaceholderShown(node)
+	case "has":
+		// :has(relative selector) — matches if the element has descendants/siblings
+		// matching the relative selector
+		return MatchHasSelector(node, pseudoArg)
+	case "indeterminate":
+		// :indeterminate matches checkbox elements in an indeterminate state
+		// (JavaScript sets .indeterminate=true) or radio buttons in a group where
+		// none are checked. Since we don't have JS, match <input type="checkbox">
+		// (without checked attribute) and <input type="radio">.
+		typ := strings.ToLower(node.GetAttribute("type"))
+		if typ == "checkbox" {
+			return !node.HasAttribute("checked")
+		}
+		if typ == "radio" {
+			return true
+		}
+		return false
+	case "default":
+		// :default matches form elements that are the default in a group:
+		// submit buttons, the initially-checked radio/checkbox, default option in select.
+		// Match: <button type="submit">, <input type="submit">, <input type="image">,
+		// and <input type="checkbox"> or <input type="radio"> with checked attribute.
+		tag := strings.ToLower(node.TagName)
+		typ := strings.ToLower(node.GetAttribute("type"))
+		if tag == "button" && typ == "submit" {
+			return true
+		}
+		if typ == "submit" || typ == "image" {
+			return true
+		}
+		if typ == "checkbox" || typ == "radio" {
+			return node.HasAttribute("checked")
+		}
+		return false
 	default:
 		// Unknown pseudo-class — treat as matching for forward compatibility
 		return true
@@ -1295,7 +1359,7 @@ func computeSpecificity(selector string) Specificity {
 			b++
 			sel = sel[1:]
 			if sel[0] == ':' {
-				// Pseudo-element (::before) — CSS3 specificity treats these like class (b)
+				// Pseudo-element (::before, ::marker) — CSS3 specificity treats these like class (b)
 				sel = sel[1:]
 			}
 			for len(sel) > 0 && sel[0] != ' ' && sel[0] != '[' && sel[0] != '.' && sel[0] != '#' && sel[0] != ':' && sel[0] != '(' {
