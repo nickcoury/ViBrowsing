@@ -220,6 +220,7 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"hanging-punctuation": "none",
 		"font-stretch":         "normal",
 		"transform-box":        "view-box",
+	"transform-origin":     "50% 50%",
 		"place-items":          "normal",
 		"place-self":           "normal",
 		"justify-items":        "normal",
@@ -482,6 +483,7 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"hanging-punctuation": "none",
 		"font-stretch":         "normal",
 		"transform-box":        "view-box",
+	"transform-origin":     "50% 50%",
 		"place-items":          "normal",
 		"place-self":           "normal",
 		"justify-items":        "normal",
@@ -1872,6 +1874,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["transform"] = value
 	case "transform-box":
 		props["transform-box"] = value
+	case "transform-origin":
+		props["transform-origin"] = value
 	case "position":
 		props["position"] = value
 	case "top":

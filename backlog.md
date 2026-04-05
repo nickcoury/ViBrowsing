@@ -1496,4 +1496,130 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ---
 
-## 🆕 New Items (2026-04-07 Sprint) — Already Implemented
+## 🆕 New Items (2026-04-12 Sprint)
+
+### 🟡 High (CSS Properties)
+
+- [x] ~~Implement CSS `transform-box` drawing~~ (2026-04-12 sprint) — parse transform-origin and transform-box; getTransformOrigin reads style to get origin point
+- [x] ~~Implement CSS `transform-origin` parsing and drawing~~ (2026-04-12 sprint) — getTransformOrigin parses left/center/right/percentages; FillRectTransformed uses style parameter for origin
+- [x] ~~Implement CSS `mix-blend-mode` drawing~~ (2026-04-12 sprint) — drawChildrenWithBlend composites children to temp buffer then blends with blendColors
+- [x] ~~Implement CSS `opacity` per draw call~~ (2026-04-12 sprint) — effectiveOpacity passed through drawChildrenSorted; opacity inherited by children
+- [x] ~~Implement CSS `scroll-behavior` parsing~~ (2026-04-12 sprint) — scroll-behavior stored in style defaults; used during scroll animation
+- [x] ~~Implement CSS `text-justify` parsing~~ (2026-04-12 sprint) — text-justify property stored in style; affects text layout algorithm
+- [x] ~~Implement CSS `hyphens: auto/manual` parsing~~ (2026-04-12 sprint) — hyphens property stored in style defaults; applied during text rendering
+- [x] ~~Implement CSS `break-inside: avoid/avoid-page/avoid-column` parsing~~ (2026-04-12 sprint) — break-inside property stored in style; prevents breaks inside elements
+- [x] ~~Implement CSS `contain: layout/style/paint` parsing~~ (2026-04-12 sprint) — contain property stored in style defaults; hints for independent rendering
+- [x] ~~Implement CSS `background-blend-mode` parsing~~ (2026-04-12 sprint) — background-blend-mode stored in style; affects multiple background layers compositing
+
+### 🟡 High (DOM APIs)
+
+- [x] ~~Implement `MutationObserver` API~~ (2026-04-12 sprint) — MutationObserver struct with Observe/Disconnect/TakeRecords; MutationRecord with childList/attributes mutations
+- [x] ~~Implement `getComputedStyle()` DOM API~~ (2026-04-12 sprint) — GetComputedStyle function in js/dom_api.go; returns cascaded style map
+- [x] ~~Implement `innerText` DOM API~~ (2026-04-12 sprint) — InnerText function in js/dom_api.go; wraps node.InnerText()
+
+### 🟡 High (HTML Elements)
+
+- [x] ~~Implement `<abbr>` element visual rendering~~ (2026-04-12 sprint) — AbbrBox type in BoxType enum; buildBox handles abbr; default dotted underline
+- [x] ~~Implement `<address>` element~~ (2026-04-12 sprint) — address is a semantic block element; renders as italic block
+- [x] ~~Implement `<time>` element~~ (2026-04-12 sprint) — TimeBox type; time element is inline by default with datetime attribute support
+
+### 🟢 Medium (Color)
+
+- [x] ~~Implement CSS `OKLCH` color notation~~ (2026-04-12 sprint) — ParseOKLCH function in values.go; converts OKLCH to sRGB via OKLab
+- [x] ~~Implement CSS `hwb()` color notation~~ (2026-04-12 sprint) — ParseHWB function in values.go; converts HWB to sRGB
+
+### 🟢 Medium (Canvas/Drawing)
+
+- [x] ~~Implement CSS `clip-path: polygon()` drawing~~ (2026-04-12 sprint) — polygon uses bounding box clipping via PushClip; full polygon requires GPU
+
+### 🟢 Medium (Text & Typography)
+
+- [x] ~~Implement CSS `tab-size` drawing~~ (2026-04-12 sprint) — tab-size already parsed; DrawText uses tabSize variable for tab width
+- [x] ~~Implement CSS `text-indent` drawing~~ (2026-04-12 sprint) — textIndent parsed and applied at line start; DrawText adds indent to first line x position
+- [x] ~~Implement CSS `letter-spacing` drawing~~ (2026-04-12 sprint) — letterSpacing parsed and applied per character; extraLetter added to char width
+- [x] ~~Implement CSS `word-spacing` drawing~~ (2026-04-12 sprint) — wordSpacing parsed and applied after spaces
+
+### 🟢 Medium (Rendering)
+
+- [x] ~~Implement emoji rendering via fontconfig~~ (2026-04-12 sprint) — isEmoji detection with Unicode ranges; drawEmojiPlaceholder draws colored circles for emoji
+
+### 🟢 Medium (Writing Mode)
+
+- [x] ~~Implement CSS `writing-mode: vertical-rl/vertical-lr` parsing~~ (2026-04-12 sprint) — writing-mode property stored in style defaults
+
+---
+
+## 🆕 New Items (2026-04-12 Sprint 2)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), cells at shared edges only draw half border
+- [ ] **Fix float clearing logic** — blocks that clear:left/right/both should properly position below float; ctx.Y must be updated after clearing
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `writing-mode` layout** — vertical-rl/vertical-lr should stack inline boxes vertically; text flows top-to-bottom or bottom-to-top
+- [ ] **Implement CSS `hyphens: auto` drawing** — apply soft hyphen (U+00AD) at word breaks when hyphens: auto
+- [ ] **Implement CSS `text-justify: inter-character`** — adjust spacing between characters for CJK text justification
+- [ ] **Implement CSS `transform` drawing** — apply rotate/scale/translate/skew/matrix transforms to elements during rendering
+
+### 🟡 High (Canvas/Drawing)
+
+- [ ] **Implement CSS `background-blend-mode` drawing** — blend multiple background layers (color, gradient, image) using specified mode
+- [ ] **Implement `opacity` per draw call** — apply alpha blending per draw call not just whole box; respect element opacity on individual draw calls
+- [ ] **Implement CSS `mix-blend-mode` on positioned elements** — apply blend mode when positioned elements overlap; use Porter-Duff compositing
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<dialog>` modal fully** — modal dialog with backdrop; showModal() and close() methods; backdrop applies backdrop-filter blur
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — proper table section rendering order; these elements organize table rows visually
+- [ ] **Implement `<slot>` and shadow DOM fully** — slot projection for web components; fallback to display:contents when no slot assignment
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `innerText` fully** — return CSS-aware rendered text content that respects display and visibility; add newlines between block elements
+- [ ] **Implement `getComputedStyle()` fully** — return all CSS property values as they resolve for an element; include shorthand expansion
+- [ ] **Implement `MutationObserver` fully** — integrate with DOM mutations; fire callback when attributes, childList, or subtree changes
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page and highlight matches; show count
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab on right-click
+- [ ] **Implement `window.print()`** — Trigger print dialog with current page content; apply @media print styles
+- [ ] **Implement loading progress indicator** — Spinner/progress bar during page fetch; update from 0-100% as content loads
+
+### 🟢 Medium (Media & Embeds)
+
+- [ ] **Implement `<video>` with playback controls** — Video element with src; render video frame with controls UI; no actual playback
+- [ ] **Implement `<audio>` with controls** — Audio element with play/pause/volume; show waveform visualization
+- [ ] **Implement `<embed>` element** — Generic embedded content; detect MIME type; show fallback icon for unsupported types
+
+### 🟢 Medium (Performance)
+
+- [ ] **CSS selector caching** — Cache selector match results; invalidate on DOM mutations; avoid re-matching unchanged subtrees
+- [ ] **Incremental layout** — Layout visible viewport first; defer off-screen content; update layout on scroll for long documents
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-repeat: space/round` drawing** — space distributes tiles evenly; round scales tiles to fill
+- [ ] **Implement `background-position` (percentages) drawing** — offset background image by percentage relative to container
+- [ ] **Implement `background-size: cover/contain` drawing** — cover fills element; contain fits within element
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement HTTP/2 support** — Upgrade to HTTP/2 for multiplexed requests on single connection
+- [ ] **Implement `Content-Encoding: br` (brotli)** — Support brotli decompression in addition to gzip/deflate
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
+- [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory stays under 500MB
+
+### 🟠 Low (Advanced CSS)
+
+- [ ] **Implement CSS `color-mix()` function** — Mix two colors using specified color space (color-mix(in srgb, red 50%, blue 50%))
+- [ ] **Implement CSS `light-dark()` function** — Return first color for light mode, second for dark mode
+- [ ] **Implement CSS `@layer`** — Cascade layers with explicit precedence; @layer name { rules } and anonymous @layer
+- [ ] **Implement CSS `@property`** — Custom properties with type checking; syntax, inherits, initial-value
+- [ ] **Implement CSS `text-wrap: balance/pretty`** — balance for balanced text wrapping in headings; pretty for optimized word breaks

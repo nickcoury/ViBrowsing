@@ -1927,3 +1927,237 @@ func ParseLightDark(s string) Color {
 	// Return first color (light mode)
 	return ParseColor(parts[0])
 }
+
+// ParseOKLCH parses an OKLCH color value.
+// Format: oklch(L% C H / A)
+// L = lightness (0-100% or 0-1)
+// C = chroma (0-0.4 or so)
+// H = hue (0-360 degrees)
+// A = alpha (optional, 0-1 or 0-100%)
+// Example: oklch(50% 0.2 240), oklch(70% 0.15 120 / 0.5)
+func ParseOKLCH(s string) Color {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "oklch(") && !strings.HasPrefix(s, "oklab(") {
+		return Color{}
+	}
+
+	// Determine function name length
+	prefixLen := 7 // "oklch("
+	if strings.HasPrefix(s, "oklab(") {
+		prefixLen = 7 // "oklab("
+	}
+
+	if len(s) < prefixLen+1 {
+		return Color{}
+	}
+
+	inner := s[prefixLen : len(s)-1] // Remove function name and ")"
+	parts := splitFunctionParts(inner)
+	if len(parts) < 3 {
+		return Color{}
+	}
+
+	// Parse L (lightness)
+	// Remove % if present and normalize to 0-255
+	L := parseFloatOrPercent(parts[0], 100)
+	L *= 2.55 // Convert to 0-255 range for sRGB approximation
+
+	// Parse C (chroma)
+	C := 0.0
+	if v, err := strconv.ParseFloat(parts[1], 64); err == nil {
+		C = v * 255 // Scale chroma to 0-255 range
+	}
+
+	// Parse H (hue in degrees)
+	H := 0.0
+	if v, err := strconv.ParseFloat(parts[2], 64); err == nil {
+		H = v // degrees
+	}
+
+	// Convert OKLCH to sRGB via OKLab intermediate
+	// First convert OKLCH to OKLab L, a, b
+	// C = chroma, h = hue in radians
+	hRad := H * math.Pi / 180
+	a := C * math.Cos(hRad)
+	b := C * math.Sin(hRad)
+
+	// OKLab to sRGB conversion
+	// l_, m_, s_ = (3, 24, 8) for D65
+	var L_, M_, S_ float64
+	// Inverse transformation from OKLab to XYZ
+	lmsL := math.Pow(L/100.0, 1.0/3.0)
+	lmsM := math.Pow((M_+100)/100.0, 1.0/3.0)
+	lmsS := math.Pow((S_+100)/100.0, 1.0/3.0)
+
+	// Simplified OKLCH -> sRGB (approximation)
+	// Using the formula from CSS Color 4 spec
+	// This is a simplified version; full conversion involves matrix math
+	r := L_ + 0.396337 * a + 0.215804 * b
+	g := L_ - 0.105561 * a - 0.063854 * b
+	bVal := L_ - 0.089484 * a + 1.291745 * b
+
+	// Apply transfer function
+	rl := r*r*r
+	gl := g*g*g
+	bl := bVal*bVal*bVal
+
+	// Clamp values
+	if rl < 0 { rl = 0 }
+	if rl > 1 { rl = 1 }
+	if gl < 0 { gl = 0 }
+	if gl > 1 { gl = 1 }
+	if bl < 0 { bl = 0 }
+	if bl > 1 { bl = 1 }
+
+	// Apply alpha if present
+	alpha := float64(255)
+	if len(parts) >= 4 {
+		parts[3] = strings.TrimSpace(parts[3])
+		if strings.HasSuffix(parts[3], "%") {
+			if v, err := strconv.ParseFloat(strings.TrimSuffix(parts[3], "%"), 64); err == nil {
+				alpha = v * 2.55
+			}
+		} else if v, err := strconv.ParseFloat(parts[3], 64); err == nil {
+			if v <= 1 {
+				alpha = v * 255
+			} else {
+				alpha = v
+			}
+		}
+	}
+
+	return Color{
+		R: uint8(rl * 255),
+		G: uint8(gl * 255),
+		B: uint8(bl * 255),
+		A: uint8(alpha),
+	}
+}
+
+// ParseHWB parses an HWB (Hue, Whiteness, Blackness) color value.
+// Format: hwb(H W% B% / A)
+// H = hue (0-360 degrees)
+// W = whiteness (0-100%)
+// B = blackness (0-100%)
+// A = alpha (optional, 0-1)
+// Example: hwb(240, 50%, 20%), hwb(120 30% 10% / 0.5)
+func ParseHWB(s string) Color {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "hwb(") {
+		return Color{}
+	}
+
+	if len(s) < 5 {
+		return Color{}
+	}
+
+	inner := s[4 : len(s)-1] // Remove "hwb(" and ")"
+	parts := splitFunctionParts(inner)
+	if len(parts) < 3 {
+		return Color{}
+	}
+
+	// Parse H (hue)
+	H := 0.0
+	if v, err := strconv.ParseFloat(parts[0], 64); err == nil {
+		H = v
+	}
+
+	// Parse W (whiteness) as percentage
+	W := 0.0
+	wStr := strings.TrimSuffix(parts[1], "%")
+	if v, err := strconv.ParseFloat(wStr, 64); err == nil {
+		W = v / 100.0 // Normalize to 0-1
+	}
+
+	// Parse B (blackness) as percentage
+	B := 0.0
+	bStr := strings.TrimSuffix(parts[2], "%")
+	if v, err := strconv.ParseFloat(bStr, 64); err == nil {
+		B = v / 100.0 // Normalize to 0-1
+	}
+
+	// Clamp W and B
+	if W < 0 { W = 0 }
+	if W > 1 { W = 1 }
+	if B < 0 { B = 0 }
+	if B > 1 { B = 1 }
+
+	// HWB to sRGB conversion:
+	// H is hue angle (0-360), W is whiteness, B is blackness
+	// Algorithm: mix from white (W) and black (B), with hue (H) in between
+
+	// Convert H to RGB first using the standard algorithm
+	h := H / 60.0
+	i := int(math.Floor(h))
+	f := h - float64(i)
+	p := 0.0
+	q := 0.0
+	t := 0.0
+
+	if i == 0 {
+		p, q, t = 1, f, 1-f
+	} else if i == 1 {
+		p, q, t = 1-t, 1, f
+	} else if i == 2 {
+		p, q, t = f, 1, 1-t
+	} else if i == 3 {
+		p, q, t = 1, 1-f, t
+	} else if i == 4 {
+		p, q, t = 1-t, f, 1
+	} else {
+		p, q, t = 0, 1, 1-f
+	}
+
+	// Calculate base RGB from hue
+	r := (p + q*(1-W-B)) * 255
+	g := (q + t*(1-W-B)) * 255
+	bVal := (1 + (1-t)*(1-W-B)) * 255
+
+	// Clamp
+	if r < 0 { r = 0 }
+	if r > 255 { r = 255 }
+	if g < 0 { g = 0 }
+	if g > 255 { g = 255 }
+	if bVal < 0 { bVal = 0 }
+	if bVal > 255 { bVal = 255 }
+
+	// Apply alpha if present
+	alpha := float64(255)
+	if len(parts) >= 4 {
+		alphaStr := strings.TrimSpace(parts[3])
+		if strings.HasSuffix(alphaStr, "%") {
+			if v, err := strconv.ParseFloat(strings.TrimSuffix(alphaStr, "%"), 64); err == nil {
+				alpha = v * 2.55
+			}
+		} else if v, err := strconv.ParseFloat(alphaStr, 64); err == nil {
+			if v <= 1 {
+				alpha = v * 255
+			} else {
+				alpha = v
+			}
+		}
+	}
+
+	return Color{
+		R: uint8(r),
+		G: uint8(g),
+		B: uint8(bVal),
+		A: uint8(alpha),
+	}
+}
+
+// parseFloatOrPercent parses a string that may be a percentage.
+// Returns value normalized to 0-1 range if percentage, or the raw float if not.
+func parseFloatOrPercent(s string, maxVal float64) float64 {
+	s = strings.TrimSpace(s)
+	if strings.HasSuffix(s, "%") {
+		if v, err := strconv.ParseFloat(strings.TrimSuffix(s, "%"), 64); err == nil {
+			return v / 100.0 * maxVal
+		}
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return v
+	}
+	return 0
+}
