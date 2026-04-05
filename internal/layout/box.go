@@ -513,6 +513,10 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = BdiBox
 	case "bdo":
 		box.Type = BdoBox
+		// bdo overrides text direction - set direction from dir attribute
+		if dir := node.GetAttribute("dir"); dir == "rtl" || dir == "ltr" {
+			box.Style["direction"] = dir
+		}
 	case "abbr":
 		box.Type = AbbrBox
 		// Default abbr styling: dotted underline

@@ -146,7 +146,7 @@ func navigateToURL(browser *BrowserState, url, userAgent string, viewportW, view
 	}
 
 	// Fetch the page with cookie support
-	resp, err := fetch.Fetch(url, userAgent, 10, browser.CookieJar)
+	resp, err := fetch.Fetch(url, userAgent, 10, browser.CookieJar, nil)
 	if err != nil {
 		fmt.Printf("Fetch error: %v\n", err)
 		return nil

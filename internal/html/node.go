@@ -507,6 +507,29 @@ func (n *Node) GetElementById(id string) *Node {
 	return nil
 }
 
+// Closest traverses the element and its ancestors (including itself) and returns
+// the first ancestor that matches the provided CSS selector.
+// Returns nil if no ancestor matches.
+func (n *Node) Closest(selector string) *Node {
+	current := n
+	for current != nil {
+		if current.Type == NodeElement && matchSelector(current, selector) {
+			return current
+		}
+		current = current.Parent
+	}
+	return nil
+}
+
+// Matches returns true if the element would be selected by the given CSS selector.
+// Returns false if the selector is invalid or does not match.
+func (n *Node) Matches(selector string) bool {
+	if n.Type != NodeElement {
+		return false
+	}
+	return matchSelector(n, selector)
+}
+
 // DOMRect represents a rectangle in viewport coordinates (as returned by getBoundingClientRect).
 type DOMRect struct {
 	X, Y      float64 // viewport-relative x and y coordinates

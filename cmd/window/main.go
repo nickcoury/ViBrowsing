@@ -40,6 +40,10 @@ type Browser struct {
 	linkClicked     bool   // prevents double-click navigation
 	KeyHeld         map[ebiten.Key]bool // tracks which keys are currently held
 	LastTypingLen   int    // length of Typing last frame (to detect changes)
+	// Channel for communication from fetch goroutine to main loop
+	pageResult      chan *PageState // nil means error with ErrorMsg set
+	navURL          string          // URL being navigated to
+	navDone         chan struct{}   // closed when navigation completes
 }
 
 // PageState holds the current page data
@@ -70,17 +74,23 @@ func main() {
 	ebiten.SetWindowTitle("ViBrowsing")
 	ebiten.SetWindowSize(1024, 768)
 
+	// Default URL
+	startURL := "https://example.com"
+
 	browser := &Browser{
 		ViewportW:    1024,
 		ViewportH:    768,
 		CookieJar:    fetch.NewCookieJar(),
-		URLBarText:   "https://example.com",
+		URLBarText:   startURL,
 		URLBarFocused: false,
 		HoveredLinkIdx: -1,
 		History:     []string{},
 		HistoryIndex: -1,
 		KeyHeld:     make(map[ebiten.Key]bool),
 	}
+
+	// Navigate to start URL
+	browser.navigateTo(startURL)
 
 	if err := ebiten.RunGame(browser); err != nil {
 		panic(err)
@@ -96,6 +106,26 @@ func (b *Browser) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHe
 
 // Update runs every frame
 func (b *Browser) Update() error {
+	// Check if navigation completed
+	if b.navDone != nil {
+		select {
+		case page := <-b.pageResult:
+			if page != nil {
+				b.Page = page
+				pageH := int(page.Layout.ContentH)
+				b.MaxScrollY = pageH - (b.ViewportH - totalChrome)
+				if b.MaxScrollY < 0 {
+					b.MaxScrollY = 0
+				}
+			}
+			b.Loading = false
+			b.navDone = nil
+			b.pageResult = nil
+		default:
+			// Still loading
+		}
+	}
+
 	// Check if we need to start a navigation
 	if b.PendingNav != "" {
 		url := b.PendingNav
@@ -365,7 +395,7 @@ func (b *Browser) Draw(screen *ebiten.Image) {
 		screen.DrawImage(ebitenImg, opts)
 
 		// Highlight hovered link
-		if b.HoveredLinkIdx >= 0 {
+		if b.HoveredLinkIdx >= 0 && b.HoveredLinkIdx < len(b.Page.Links) {
 			link := b.Page.Links[b.HoveredLinkIdx]
 			r := link.Rect
 			r.Min.Y -= b.ScrollY
@@ -376,11 +406,13 @@ func (b *Browser) Draw(screen *ebiten.Image) {
 				drawRectOutline(screen, highlightRect, color.RGBA{R: 0, G: 100, B: 255, A: 100})
 			}
 		}
+	} else if b.Page != nil && b.Page.Canvas != nil && b.Loading {
+		drawTextAt(screen, "Loading page...", 10, contentOffset+20, color.RGBA{R: 0, G: 0, B: 0, A: 255})
+		drawTextAt(screen, fmt.Sprintf("Layout: %.0fx%.0f", b.Page.Layout.ContentW, b.Page.Layout.ContentH), 10, contentOffset+50, color.RGBA{R: 0, G: 0, B: 0, A: 255})
 	} else if b.ErrorMsg != "" {
-		drawTextAt(screen, b.ErrorMsg, 10, contentOffset+20, color.RGBA{R: 200, G: 0, B: 0, A: 255})
-	} else if !b.Loading {
-		drawTextAt(screen, "ViBrowsing", 10, contentOffset+20, color.RGBA{R: 0, G: 0, B: 0, A: 255})
-		drawTextAt(screen, "Enter a URL above", 10, contentOffset+50, color.RGBA{R: 100, G: 100, B: 100, A: 255})
+		drawTextAt(screen, "Error: "+b.ErrorMsg, 10, contentOffset+20, color.RGBA{R: 200, G: 0, B: 0, A: 255})
+	} else {
+		drawTextAt(screen, "ViBrowsing - Enter a URL above", 10, contentOffset+20, color.RGBA{R: 0, G: 0, B: 0, A: 255})
 	}
 
 	// Draw status bar
@@ -475,25 +507,31 @@ func (b *Browser) navigateTo(rawURL string) {
 	b.Page = nil
 	b.HoveredLinkIdx = -1
 	b.CurrentURL = url
+	b.navURL = url
+
+	// Create channel for result
+	b.pageResult = make(chan *PageState, 1)
+	b.navDone = make(chan struct{}, 1)
 
 	// Fetch and render in a goroutine
-	go b.fetchAndRender(url)
+	go func() {
+		page, errMsg := b.fetchAndRenderSync(url)
+		b.pageResult <- page
+		b.ErrorMsg = errMsg
+		close(b.navDone)
+	}()
 }
 
-func (b *Browser) fetchAndRender(rawURL string) {
-	resp, err := fetch.Fetch(rawURL, "", 10, b.CookieJar)
+func (b *Browser) fetchAndRenderSync(rawURL string) (*PageState, string) {
+	resp, err := fetch.Fetch(rawURL, "", 10, b.CookieJar, nil)
 	if err != nil {
-		b.Loading = false
-		b.ErrorMsg = fmt.Sprintf("Fetch error: %v", err)
-		return
+		return nil, fmt.Sprintf("Fetch error: %v", err)
 	}
 
 	dom := html.Parse(resp.Body)
 
 	if resp.StatusCode >= 400 {
-		b.Loading = false
-		b.ErrorMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
-		return
+		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
 
 	// Collect CSS rules
@@ -523,9 +561,7 @@ func (b *Browser) fetchAndRender(rawURL string) {
 
 	layoutBox := layout.BuildLayoutTree(dom, cssRules, b.ViewportW, b.ViewportH-contentOffset)
 	if layoutBox == nil {
-		b.Loading = false
-		b.ErrorMsg = "No body element found"
-		return
+		return nil, "No body element found"
 	}
 
 	layout.LayoutBlock(layoutBox, float64(b.ViewportW))
@@ -536,20 +572,15 @@ func (b *Browser) fetchAndRender(rawURL string) {
 
 	links := extractLinks(layoutBox, dom, resp.FinalURL)
 
-	pageH := int(layoutBox.ContentH)
-	b.MaxScrollY = pageH - (b.ViewportH - totalChrome)
-	if b.MaxScrollY < 0 {
-		b.MaxScrollY = 0
-	}
-
-	b.Page = &PageState{
+	page := &PageState{
 		URL:    resp.FinalURL,
 		DOM:    dom,
 		Layout: layoutBox,
 		Canvas: canvas,
 		Links:  links,
 	}
-	b.Loading = false
+
+	return page, ""
 }
 
 func extractLinks(layoutBox *layout.Box, dom *html.Node, baseURL string) []LinkInfo {

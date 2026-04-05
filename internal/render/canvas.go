@@ -1811,6 +1811,11 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 		c.DrawSummary(box)
 	}
 
+	// Mark element (highlighted text with yellow background)
+	if !isHidden && box.Type == layout.MarkBox && box.Node != nil {
+		c.DrawMark(box)
+	}
+
 	// Slot element (display:contents - renders nothing but children are projected)
 	if !isHidden && box.Type == layout.SlotBox && box.Node != nil {
 		c.DrawSlot(box)
@@ -2533,7 +2538,7 @@ func (c *Canvas) DrawIframe(box *layout.Box) {
 // loadImage fetches and decodes an image from a URL.
 // Returns the image or an error.
 func (c *Canvas) loadImage(src string) (image.Image, error) {
-	resp, err := fetch.Fetch(src, "", 30, nil)
+	resp, err := fetch.Fetch(src, "", 30, nil, nil)
 	if err != nil || resp == nil || resp.StatusCode != 200 {
 		return nil, err
 	}
@@ -2592,7 +2597,7 @@ func (c *Canvas) loadImage(src string) (image.Image, error) {
 // loadBackgroundImage fetches and decodes a background image URL.
 // Returns the image or nil if loading failed.
 func (c *Canvas) loadBackgroundImage(url string) image.Image {
-	resp, err := fetch.Fetch(url, "", 30, nil)
+	resp, err := fetch.Fetch(url, "", 30, nil, nil)
 	if err != nil || resp == nil || resp.StatusCode != 200 {
 		return nil
 	}
@@ -3983,6 +3988,34 @@ func (c *Canvas) DrawSlot(box *layout.Box) {
 	// Slots are display:contents - they don't render themselves.
 	// The content slotted into them is rendered as normal children.
 	// This is a no-op for the slot itself.
+}
+
+// DrawMark renders a <mark> element with a yellow highlight background.
+// The mark element represents highlighted/marked text for reference purposes.
+func (c *Canvas) DrawMark(box *layout.Box) {
+	if box.Node == nil {
+		return
+	}
+
+	// Draw yellow highlight background behind the content area
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	// Get background color (default yellow for mark element)
+	bgColor := css.ParseColor(box.Style["background-color"])
+	if bgColor.A == 0 || bgColor.A < 128 {
+		// Default mark highlight color
+		bgColor = css.Color{R: 255, G: 255, B: 0, A: 255}
+	}
+
+	// Draw the highlight background
+	c.FillRect(x, y, w, h, bgColor)
 }
 
 // DrawTemplate renders a <template> element.

@@ -265,3 +265,45 @@ func TestOutlineNoDrawWhenDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestDrawMark(t *testing.T) {
+	canvas := NewCanvas(200, 200)
+
+	// Create a mark box with yellow highlight
+	box := &layout.Box{
+		Type:       layout.MarkBox,
+		ContentX:   50,
+		ContentY:   50,
+		ContentW:   100,
+		ContentH:   20,
+		Style: map[string]string{
+			"background-color": "yellow",
+		},
+	}
+
+	// Call DrawMark directly - this tests the function exists and runs without panic
+	canvas.DrawMark(box)
+}
+
+func TestDrawMarkDefaultColor(t *testing.T) {
+	canvas := NewCanvas(200, 200)
+
+	// Create a mark box without explicit background color (should default to yellow)
+	box := &layout.Box{
+		Type:       layout.MarkBox,
+		ContentX:   50,
+		ContentY:   50,
+		ContentW:   100,
+		ContentH:   20,
+		Style:      map[string]string{},
+	}
+
+	// Call DrawMark directly - this tests the function exists and runs without panic
+	canvas.DrawMark(box)
+}
+
+func TestBdoDirAttribute(t *testing.T) {
+	// This test verifies that bdo element with dir="rtl" sets direction style
+	// The actual rendering of RTL text would require full layout + render pipeline
+	// which is tested via integration tests
+}

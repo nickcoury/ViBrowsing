@@ -138,6 +138,13 @@ func supportsPropertyValue(property, value string) bool {
 		return true
 	case "letter-spacing", "word-spacing":
 		return true
+	case "text-justify":
+		// text-justify: auto, none, inter-word, inter-character
+		switch value {
+		case "auto", "none", "inter-word", "inter-character":
+			return true
+		}
+		return false
 	case "text-indent":
 		return true
 	case "text-transform":
@@ -166,6 +173,13 @@ func supportsPropertyValue(property, value string) bool {
 		return supportsFontStretch(value)
 	case "font-variant":
 		return true
+	case "font-synthesis":
+		// font-synthesis: none, weight, style
+		switch value {
+		case "none", "weight", "style", "auto":
+			return true
+		}
+		return false
 	case "direction":
 		return value == "ltr" || value == "rtl"
 	case "writing-mode":
@@ -179,7 +193,12 @@ func supportsPropertyValue(property, value string) bool {
 	case "tab-size":
 		return true
 	case "hyphens":
-		return true
+		// hyphens: none, manual, auto
+		switch value {
+		case "none", "manual", "auto":
+			return true
+		}
+		return false
 	case "break-inside", "break-before", "break-after":
 		return true
 	case "column-width", "column-count", "column-gap", "column-rule":
@@ -202,6 +221,42 @@ func supportsPropertyValue(property, value string) bool {
 		return true
 	case "scroll-behavior":
 		return true
+	case "background-blend-mode":
+		return supportsBlendMode(value)
+	case "color-scheme":
+		// normal, light, dark, or light dark
+		switch value {
+		case "normal", "light", "dark", "only":
+			return true
+		}
+		if strings.Contains(value, "light") || strings.Contains(value, "dark") {
+			return true
+		}
+		return false
+	case "accent-color":
+		// auto or a color
+		if value == "auto" {
+			return true
+		}
+		return ParseColor(value).A > 0 || value == "transparent"
+	case "scrollbar-width":
+		// thin, none, auto
+		switch value {
+		case "thin", "none", "auto":
+			return true
+		}
+		return false
+	case "scrollbar-color":
+		// auto or two colors (thumb track)
+		if value == "auto" {
+			return true
+		}
+		// Could be "color" or "color color" (thumb track)
+		parts := strings.Fields(value)
+		if len(parts) >= 1 {
+			return ParseColor(parts[0]).A > 0
+		}
+		return false
 	case "caret-color":
 		return true
 	case "appearance":

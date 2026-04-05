@@ -385,3 +385,291 @@ func TestInnerTextNestedBlockAndInline(t *testing.T) {
 		t.Errorf("expected %q, got %q", expected, innerText)
 	}
 }
+
+// TestClosestBasic tests basic Closest functionality
+func TestClosestBasic(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	div.SetAttribute("id", "outer")
+	body.AppendChild(div)
+
+	span := NewElement("span")
+	span.SetAttribute("class", "target")
+	div.AppendChild(span)
+
+	// span.closest("div") should return the div
+	found := span.Closest("div")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != div {
+		t.Error("expected Closest to return the div element")
+	}
+}
+
+// TestClosestSelf tests that Closest includes the element itself in the search
+func TestClosestSelf(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	div.SetAttribute("class", "target")
+	body.AppendChild(div)
+
+	// div.closest(".target") should return div itself
+	found := div.Closest(".target")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != div {
+		t.Error("expected Closest to return the div element itself")
+	}
+}
+
+// TestClosestNoMatch tests Closest when no ancestor matches
+func TestClosestNoMatch(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	body.AppendChild(div)
+
+	span := NewElement("span")
+	div.AppendChild(span)
+
+	// span.closest("p") should return nil since there's no p ancestor
+	found := span.Closest("p")
+	if found != nil {
+		t.Error("expected nil from Closest when no match found")
+	}
+}
+
+// TestClosestNestedAncestors tests Closest with multiple levels of ancestors
+func TestClosestNestedAncestors(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	section := NewElement("section")
+	section.SetAttribute("class", "container")
+	body.AppendChild(section)
+
+	article := NewElement("article")
+	article.SetAttribute("class", "container")
+	section.AppendChild(article)
+
+	p := NewElement("p")
+	article.AppendChild(p)
+
+	// p.closest(".container") should return article (closest ancestor)
+	found := p.Closest(".container")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != article {
+		t.Error("expected Closest to return the closest matching ancestor (article)")
+	}
+}
+
+// TestClosestIdSelector tests Closest with ID selector
+func TestClosestIdSelector(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	div.SetAttribute("id", "wrapper")
+	body.AppendChild(div)
+
+	span := NewElement("span")
+	div.AppendChild(span)
+
+	// span.closest("#wrapper") should return div
+	found := span.Closest("#wrapper")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != div {
+		t.Error("expected Closest to return the div element")
+	}
+}
+
+// TestClosestTagSelector tests Closest with tag name selector
+func TestClosestTagSelector(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	body.AppendChild(div)
+
+	span := NewElement("span")
+	div.AppendChild(span)
+
+	p := NewElement("p")
+	span.AppendChild(p)
+
+	// p.closest("div") should return div
+	found := p.Closest("div")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != div {
+		t.Error("expected Closest to return the div element")
+	}
+
+	// p.closest("span") should return span
+	found = p.Closest("span")
+	if found == nil {
+		t.Fatal("expected non-nil result from Closest")
+	}
+	if found != span {
+		t.Error("expected Closest to return the span element")
+	}
+}
+
+// TestMatchesBasic tests basic Matches functionality
+func TestMatchesBasic(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	div.SetAttribute("id", "test")
+	div.SetAttribute("class", "container special")
+	body.AppendChild(div)
+
+	// Test ID selector
+	if !div.Matches("#test") {
+		t.Error("expected Matches to return true for #test")
+	}
+
+	// Test class selector
+	if !div.Matches(".container") {
+		t.Error("expected Matches to return true for .container")
+	}
+	if !div.Matches(".special") {
+		t.Error("expected Matches to return true for .special")
+	}
+
+	// Test tag selector
+	if !div.Matches("div") {
+		t.Error("expected Matches to return true for div")
+	}
+
+	// Test non-matching selector
+	if div.Matches("#nonexistent") {
+		t.Error("expected Matches to return false for non-matching ID")
+	}
+	if div.Matches(".nonexistent") {
+		t.Error("expected Matches to return false for non-matching class")
+	}
+	if div.Matches("span") {
+		t.Error("expected Matches to return false for non-matching tag")
+	}
+}
+
+// TestMatchesCombinedSelectors tests Matches with compound selectors
+func TestMatchesCombinedSelectors(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	div := NewElement("div")
+	div.SetAttribute("id", "myid")
+	div.SetAttribute("class", "container")
+	body.AppendChild(div)
+
+	// Test combined class and ID
+	if !div.Matches("div#myid") {
+		t.Error("expected Matches to return true for div#myid")
+	}
+	if !div.Matches("#myid.container") {
+		t.Error("expected Matches to return true for #myid.container")
+	}
+
+	// Test non-matching combined
+	if div.Matches("span#myid") {
+		t.Error("expected Matches to return false for span#myid")
+	}
+}
+
+// TestMatchesAttributeSelector tests Matches with attribute selectors
+func TestMatchesAttributeSelector(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	input := NewElement("input")
+	input.SetAttribute("type", "text")
+	input.SetAttribute("disabled", "")
+	body.AppendChild(input)
+
+	// Test attribute presence
+	if !input.Matches("[type]") {
+		t.Error("expected Matches to return true for [type]")
+	}
+	if !input.Matches("[disabled]") {
+		t.Error("expected Matches to return true for [disabled]")
+	}
+
+	// Test attribute value
+	if !input.Matches("[type=text]") {
+		t.Error("expected Matches to return true for [type=text]")
+	}
+
+	// Test non-matching
+	if input.Matches("[type=password]") {
+		t.Error("expected Matches to return false for [type=password]")
+	}
+}
+
+// TestMatchesPseudoClass tests Matches with pseudo-class selectors
+func TestMatchesPseudoClass(t *testing.T) {
+	doc := NewDocument()
+	body := NewElement("body")
+	doc.AppendChild(body)
+
+	first := NewElement("p")
+	first.SetAttribute("class", "first")
+	body.AppendChild(first)
+
+	second := NewElement("p")
+	body.AppendChild(second)
+
+	// Test :first-child
+	if !first.Matches(":first-child") {
+		t.Error("expected first p to match :first-child")
+	}
+	if second.Matches(":first-child") {
+		t.Error("expected second p to NOT match :first-child")
+	}
+
+	// Test :last-child
+	if !second.Matches(":last-child") {
+		t.Error("expected second p to match :last-child")
+	}
+}
+
+// TestMatchesNonElement tests Matches on non-element nodes
+func TestMatchesNonElement(t *testing.T) {
+	textNode := NewText("Hello")
+
+	// Matches should return false for non-element nodes
+	if textNode.Matches("div") {
+		t.Error("expected Matches to return false for text node")
+	}
+}
+
+// TestMatchesRoot tests Matches on document node
+func TestMatchesRoot(t *testing.T) {
+	// Document node should not match any selector
+	if NewDocument().Matches("body") {
+		t.Error("expected document node to not match any selector")
+	}
+}

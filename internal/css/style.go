@@ -225,6 +225,16 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"justify-items":        "normal",
 		"justify-self":         "auto",
 		"user-select":         "auto",
+		"font-synthesis":      "none",
+		// Blend mode property
+		"background-blend-mode": "normal",
+		// Color scheme for light/dark mode
+		"color-scheme": "normal",
+		// Accent color for UI controls
+		"accent-color": "auto",
+		// Scrollbar styling
+		"scrollbar-width":  "auto",
+		"scrollbar-color": "auto",
 	}
 
 	// Element-specific default styles (HTML5 user agent defaults)
@@ -477,6 +487,16 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"justify-items":        "normal",
 		"justify-self":         "auto",
 		"user-select":         "auto",
+		"font-synthesis":      "none",
+		// Blend mode property
+		"background-blend-mode": "normal",
+		// Color scheme for light/dark mode
+		"color-scheme": "normal",
+		// Accent color for UI controls
+		"accent-color": "auto",
+		// Scrollbar styling
+		"scrollbar-width":  "auto",
+		"scrollbar-color": "auto",
 	}
 
 	// Element-specific defaults
@@ -2092,6 +2112,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["text-decoration-skip-ink"] = value
 	case "hyphens":
 		props["hyphens"] = value
+	case "font-synthesis":
+		props["font-synthesis"] = value
 	}
 }
 

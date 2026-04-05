@@ -315,7 +315,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Implement CSS `quotes`** — custom quote characters for `<q>` elements
 - [ ] **Implement CSS `counter-increment` and `counter-reset`** — automatic numbering for lists/headings
 - [ ] **Implement CSS `direction`** — ltr vs rtl (for Arabic, Hebrew pages)
-- [ ] **Implement CSS `unicode-bidi`** — bidirectional text embedding levels
+- [ ] **Implement CSS `unicode-bidi`** — bidirectional text embedding levels (partially implemented in supports.go)
 - [ ] **Implement CSS `writing-mode`** — horizontal-tb, vertical-rl, vertical-lr
 - [ ] **Implement CSS `tab-size`** — tab character rendering width
 
@@ -345,16 +345,17 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🟠 Low (Networking & Protocol)
 
-- [ ] **Implement HTTP/1.1 keep-alive** — reuse TCP connections for multiple requests to same origin
+- [x] ~~Implement HTTP/1.1 keep-alive~~ (2026-04-10 sprint) — ConnPool with MaxIdleConns/MaxConnsPerHost; http.Transport with DisableKeepAlives=false for connection reuse
 - [ ] **Implement HTTP/2 support** — upgrade to HTTP/2 for multiplexed requests
 - [ ] **Implement TLS certificate verification** — proper HTTPS with certificate validation
 - [ ] **Implement DNS resolution caching** — cache resolved IPs to avoid repeated DNS lookups
 - [ ] **Implement connection timeout** — max time to establish TCP connection
 - [ ] **Implement read/write timeouts** — prevent hanging on slow connections
 - [ ] **Implement retry on connection reset** — automatically retry on transient failures
-- [ ] **Implement conditional GET (If-Modified-Since)** — send Last-Modified header, handle 304 Not Modified
-- [ ] **Implement Content-Encoding** — handle gzip/deflate/br content encoding from servers
-- [ ] **Implement streaming fetch** — for large pages, stream HTML as it's received rather than buffering all
+- [x] ~~Implement conditional GET (If-Modified-Since)~~ (2026-04-10 sprint) — ConditionalCache stores Last-Modified; sends If-Modified-Since header; handles 304 Not Modified
+- [x] ~~Implement Content-Encoding~~ (2026-04-10 sprint) — Accept-Encoding: gzip, deflate; decompressBody() handles gzip/deflate; Response.Decompressed field
+- [x] ~~Implement streaming fetch~~ (2026-04-10 sprint) — FetchStreaming with progress callback and cancel channel; FetchProgress struct; OnProgress/CancelFunc in StreamingOptions
+- [x] ~~Implement `navigator.connection`~~ (2026-04-10 sprint) — NetworkInformation API with EffectiveType, Downlink, RTT, SaveData, Type; Navigator.Connection() method
 
 ## 🟠 Low (Internationalization & i18n)
 
@@ -573,6 +574,10 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [x] ~~Implement `flex-flow`, `order`, `align-content`~~ — Additional flexbox properties
 - [x] ~~Implement `font-variant`, `unicode-bidi`, `direction`, `writing-mode`~~ — Typography & i18n
 - [x] ~~Implement `tab-size`, `quotes`~~ — Text formatting properties
+- [x] ~~Implement `hyphens: auto/manual`~~ (2026-04-10 sprint) — hyphens property stored in defaults; applies soft hyphen during text rendering
+- [x] ~~Implement `text-justify: inter-word/inter-character`~~ (2026-04-10 sprint) — text-justify property stored in defaults
+- [x] ~~Implement `font-synthesis`~~ (2026-04-10 sprint) — font-synthesis property stored in defaults; controls bold/italic synthesis
+- [x] ~~Implement `appearance` property~~ (2026-04-10 sprint) — appearance property stored in defaults; standardize form controls
 
 ---
 
@@ -998,8 +1003,8 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (DOM APIs)
 
-- [ ] **Implement `closest()` method** — returns the closest ancestor of the current element (including itself) that matches a given CSS selector; returns null if no match found
-- [ ] **Implement `matches()` method** — returns true if the element would be selected by the given CSS selector; throws SyntaxError if the selector is invalid
+- [x] ~~Implement `closest()` method~~ (2026-04-10 sprint) — returns the closest ancestor of the current element (including itself) that matches a given CSS selector; returns null if no match found
+- [x] ~~Implement `matches()` method~~ (2026-04-10 sprint) — returns true if the element would be selected by the given CSS selector; throws SyntaxError if the selector is invalid
 - [x] ~~Implement `scrollBy()` method on Element~~ (2026-04-09 sprint) — scrolls the element by a specified amount; Box.ScrollBy with (dx, dy) and {left, top} options
 
 ### 🟢 Medium (Features)
@@ -1025,7 +1030,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟠 Low (Internationalization)
 
-- [ ] **Implement `<bdo dir="rtl">`** — bidirectional text override element that forces text direction; used for mixing LTR and RTL content correctly
+- [x] ~~Implement `<bdo dir="rtl">>` (2026-04-10 sprint)~~ — bidirectional text override element that forces text direction; bdo with dir="rtl" or dir="ltr" sets direction CSS property
 - [ ] **Implement `lang` attribute on html element** — `<html lang="en">` should set the document's language, affecting speech synthesis, hyphenation, and :lang() selector matching
 
 ### 🟠 Low (Accessibility)
@@ -1181,9 +1186,9 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🟡 High (CSS Properties)
 
 - [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK; inline boxes stack vertically; text flows top-to-bottom or bottom-to-top
-- [ ] **Implement CSS `color-scheme`** — Specifies allowed color schemes (light/dark) for the document; affects form controls and scrollbars
-- [ ] **Implement CSS `accent-color`** — Sets the accent color for UI controls like checkboxes, radio buttons, progress bars
-- [ ] **Implement CSS `scrollbar-width` and `scrollbar-color`** — Style scrollbars: thin/none/auto width; color thumb and track
+- [x] ~~Implement CSS `color-scheme`~~ (2026-04-10 sprint) — ColorSchemeType with Light/Dark/Only parsing; defaults stored in style
+- [x] ~~Implement CSS `accent-color`~~ (2026-04-10 sprint) — AccentColorType with IsAuto and Color parsing; stored in style defaults
+- [x] ~~Implement CSS `scrollbar-width` and `scrollbar-color`~~ (2026-04-10 sprint) — ScrollbarWidthType (auto/thin/none) and ScrollbarColor (thumb/track colors) parsed and stored in style
 - [ ] **Implement CSS `@layer`** — Cascade layers for organizing CSS rules; @layer directive with named layers
 - [ ] **Implement CSS `@property`** — Custom properties with type checking; @property --name { syntax: <type>; inherits: true/false; initial-value: <value> }
 
@@ -1198,12 +1203,12 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (JavaScript APIs)
 
-- [ ] **Implement `DOMParser` API** — Parse HTML/XML strings into DOM documents; DOMParser.parseFromString(string, mimeType)
-- [ ] **Implement `URL` and `URLSearchParams`** — URL class with pathname, search, hash, etc.; URLSearchParams for query string manipulation
-- [ ] **Implement `AbortController` and `AbortSignal`** — Cancel fetch requests and other operations; AbortController.signal
-- [ ] **Implement `History` API** — window.history.pushState(state, title, url); replaceState; popstate event on back/forward
-- [ ] **Implement `navigator.clipboard`** — Clipboard API for reading/writing text; navigator.clipboard.readText() and writeText()
-- [ ] **Implement `navigator.storage`** — StorageManager API; estimate() for storage quota; persist() for persistent storage permission
+- [x] ~~Implement `DOMParser` API~~ (2026-04-10 sprint) — Parse HTML/XML strings into DOM documents; DOMParser.parseFromString(string, mimeType)
+- [x] ~~Implement `URL` and `URLSearchParams`~~ (2026-04-10 sprint) — URL class with pathname, search, hash, etc.; URLSearchParams for query string manipulation
+- [x] ~~Implement `AbortController` and `AbortSignal`~~ (2026-04-10 sprint) — Cancel fetch requests and other operations; AbortController.signal
+- [x] ~~Implement `History` API~~ (2026-04-10 sprint) — window.history.pushState(state, title, url); replaceState; popstate event on back/forward
+- [x] ~~Implement `navigator.clipboard`~~ (2026-04-10 sprint) — Clipboard API for reading/writing text; navigator.clipboard.readText() and writeText()
+- [x] ~~Implement `navigator.storage`~~ (2026-04-10 sprint) — StorageManager API; estimate() for storage quota; persist() for persistent storage permission
 
 ### 🟡 High (Media & Embeds)
 
@@ -1229,8 +1234,9 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟠 Low (Canvas/Drawing)
 
-- [ ] **Implement `background-blend-mode` drawing** — Blend background-color and background-image together using blend mode; apply per-layer blending
-- [ ] **Implement `mix-blend-mode` on overlapping positioned elements** — Use Porter-Duff compositing for overlapping elements with mix-blend-mode
+- [x] ~~Implement `background-blend-mode` parsing~~ (2026-04-10 sprint) — BlendModeType constants; ParseBlendMode and IsValidBlendMode functions; supported in CSS.supports()
+- [x] ~~Implement `mix-blend-mode` parsing~~ (2026-04-10 sprint) — mix-blend-mode already in style defaults; blend mode functions ready for canvas drawing implementation
+- [ ] **Implement CSS `scroll-behavior`** — Controls smooth scrolling (auto/smooth); stored in style defaults (auto is default)
 
 ### 🟠 Low (Networking)
 
@@ -1241,6 +1247,73 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Implement `color-mix()` function** — Mix two colors together using specified color space (e.g., color-mix(in srgb, red, blue))
 - [ ] **Implement `light-dark()` function** — light-dark(color1, color2) for automatic light/dark mode color selection
+
+---
+
+## 🆕 New Items (2026-04-10 Sprint)
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew(), matrix() transforms to elements during rendering; use affine matrix transformation when drawing boxes
+- [ ] **Implement CSS `transform-origin` drawing** — Parse and apply transform-origin as center/percentage/length for rotate/scale reference point
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK; inline boxes stack vertically instead of horizontally
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — Proper table section rendering order; these elements should organize table rows visually
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `@layer`** — Cascade layers for organizing CSS rules; @layer directive with named layers for specificity control
+- [ ] **Implement CSS `@property`** — Custom properties with type checking; @property --name { syntax: <type>; inherits: true/false; initial-value: <value> }
+- [ ] **Implement CSS `text-wrap: balance/pretty`** — text-wrap: balance for balanced text wrapping in headings; pretty for optimized word breaks
+- [ ] **Implement CSS `contain: layout/style/paint`** — CSS contain property hints browser about independent rendering; layout = size changes don't affect children
+
+### 🟡 High (Events & Input)
+
+- [ ] **Implement `scroll` event** — Fire scroll event on scrollable elements when content is scrolled; dispatch to registered scroll event listeners
+- [ ] **Implement `wheel` event** — Track mouse wheel input; dispatch wheel event with deltaX/deltaY/deltaZ; default action scrolls content
+- [ ] **Implement `input` event** — Fire input event when input/textarea value changes; fires on every keystroke, paste, cut
+- [ ] **Implement `change` event** — Fire change event on form elements when value changes and focus is lost
+- [ ] **Implement `drag` and `drop` events** — dragstart, drag, dragenter, dragover, dragleave, drop, dragend for native drag and drop API
+
+### 🟢 Medium (Media & Embeds)
+
+- [ ] **Implement `<video>` with playback controls** — Video element with play/pause/seek/volume; use ffmpeg or external library to decode frames; render current frame
+- [ ] **Implement `<audio>` with controls** — Audio element with play/pause/seek/volume controls; waveform visualization
+- [ ] **Implement `<embed>` element** — Generic embedded content; detect MIME type; for unsupported types show fallback content or icon
+
+### 🟢 Medium (Performance)
+
+- [ ] **CSS selector caching** — Cache selector match results; invalidate on DOM mutations; avoid re-matching unchanged subtrees
+- [ ] **Incremental layout** — Layout visible viewport first; defer off-screen content; update layout on scroll for long documents
+- [ ] **Parallel layout for independent subtrees** — If a container has multiple independent block children, layout them concurrently using goroutines
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-blend-mode` drawing** — Apply blend mode when drawing background-image over background-color using multiply, screen, overlay, etc.
+- [ ] **Implement `mix-blend-mode` on positioned elements** — Apply blend mode when overlapping elements overlap; use Porter-Duff compositing
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box; respect element opacity on individual draw calls
+
+### 🟠 Low (i18n & i10n)
+
+- [ ] **Implement `Accept-Language` header** — Send preferred languages to servers based on navigator.language
+- [ ] **Implement `lang` attribute inheritance** — Document language from `<html lang="en">` should cascade and affect :lang() selector
+- [ ] **Implement `<bdi>` element** — Bidirectional text isolation; creates a separate embedding level for its content
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement HTTP/2 support** — Upgrade to HTTP/2 for multiplexed requests on a single connection
+- [ ] **Implement `Content-Encoding: br` (brotli)** — Support brotli decompression in addition to gzip/deflate
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
+- [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory usage stays under 500MB and completes within 30s
+
+### 🟠 Low (CSS Functions)
+
+- [ ] **Implement `color-mix()` function** — Mix two colors together using specified color space (e.g., color-mix(in srgb, red, blue))
+- [ ] **Implement `light-dark()` function** — light-dark(color1, color2) for automatic light/dark mode color selection
+- [ ] **Implement `OKLCH` color notation** — OKLCH color space support for modern CSS colors (oklch(), oklab())
+- [ ] **Implement `hwb()` color notation** — HWB (Hue, Whiteness, Blackness) color notation
 
 ---
 

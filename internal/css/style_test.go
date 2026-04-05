@@ -362,11 +362,56 @@ func TestGetComputedStyle_CompleteProperties(t *testing.T) {
 		"position":        "static",
 		"float":           "none",
 		"opacity":         "1",
+		"tab-size":        "8",
+		"hyphens":         "manual",
+		"text-justify":    "auto",
+		"unicode-bidi":    "normal",
+		"direction":       "ltr",
+		"font-synthesis":  "none",
+		"appearance":      "auto",
 	}
 
 	for prop, expected := range expectedProps {
 		if style[prop] != expected {
 			t.Errorf("expected %s=%s, got %s", prop, expected, style[prop])
 		}
+	}
+}
+
+func TestApplyDecl_FontSynthesis(t *testing.T) {
+	doc := &html.Node{
+		Type: html.NodeDocument,
+	}
+	div := &html.Node{
+		Type:     html.NodeElement,
+		TagName:  "div",
+		Parent:   doc,
+		Children: []*html.Node{},
+	}
+	div.SetAttribute("style", "font-synthesis: none; font-synthesis: weight")
+	doc.Children = append(doc.Children, div)
+
+	style := GetComputedStyle(div, []Rule{})
+	if style["font-synthesis"] != "weight" {
+		t.Errorf("expected font-synthesis=weight, got %s", style["font-synthesis"])
+	}
+}
+
+func TestApplyDecl_Hyphens(t *testing.T) {
+	doc := &html.Node{
+		Type: html.NodeDocument,
+	}
+	div := &html.Node{
+		Type:     html.NodeElement,
+		TagName:  "div",
+		Parent:   doc,
+		Children: []*html.Node{},
+	}
+	div.SetAttribute("style", "hyphens: auto")
+	doc.Children = append(doc.Children, div)
+
+	style := GetComputedStyle(div, []Rule{})
+	if style["hyphens"] != "auto" {
+		t.Errorf("expected hyphens=auto, got %s", style["hyphens"])
 	}
 }

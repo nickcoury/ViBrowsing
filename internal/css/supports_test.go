@@ -130,6 +130,38 @@ func TestSupports(t *testing.T) {
 		// Empty cells values
 		{"empty-cells", "show", true},
 		{"empty-cells", "hide", true},
+
+		// Unicode-bidi values
+		{"unicode-bidi", "normal", true},
+		{"unicode-bidi", "embed", true},
+		{"unicode-bidi", "isolate", true},
+		{"unicode-bidi", "bidi-override", true},
+		{"unicode-bidi", "isolate-override", true},
+
+		// Font-synthesis values
+		{"font-synthesis", "none", true},
+		{"font-synthesis", "weight", true},
+		{"font-synthesis", "style", true},
+		{"font-synthesis", "auto", true},
+		{"font-synthesis", "invalid", false},
+
+		// Hyphens values
+		{"hyphens", "none", true},
+		{"hyphens", "manual", true},
+		{"hyphens", "auto", true},
+		{"hyphens", "invalid", false},
+
+		// Text-justify values
+		{"text-justify", "auto", true},
+		{"text-justify", "none", true},
+		{"text-justify", "inter-word", true},
+		{"text-justify", "inter-character", true},
+		{"text-justify", "invalid", false},
+
+		// Appearance values
+		{"appearance", "auto", true},
+		{"appearance", "none", true},
+		{"appearance", "menulist", true},
 	}
 
 	for _, tt := range tests {

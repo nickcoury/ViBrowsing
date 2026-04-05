@@ -1610,6 +1610,151 @@ func ParseAttr(s string) Attr {
 	return Attr{Name: name, Type: attrType, Fallback: fallback}
 }
 
+// BlendModeType represents a CSS blend mode value.
+type BlendModeType string
+
+const (
+	BlendModeNormal       BlendModeType = "normal"
+	BlendModeMultiply      BlendModeType = "multiply"
+	BlendModeScreen        BlendModeType = "screen"
+	BlendModeOverlay       BlendModeType = "overlay"
+	BlendModeDarken        BlendModeType = "darken"
+	BlendModeLighten       BlendModeType = "lighten"
+	BlendModeColorDodge    BlendModeType = "color-dodge"
+	BlendModeColorBurn     BlendModeType = "color-burn"
+	BlendModeHardLight     BlendModeType = "hard-light"
+	BlendModeSoftLight     BlendModeType = "soft-light"
+	BlendModeDifference    BlendModeType = "difference"
+	BlendModeExclusion     BlendModeType = "exclusion"
+	BlendModeHue           BlendModeType = "hue"
+	BlendModeSaturation    BlendModeType = "saturation"
+	BlendModeColor         BlendModeType = "color"
+	BlendModeLuminosity     BlendModeType = "luminosity"
+)
+
+// ParseBlendMode parses a CSS blend mode value.
+func ParseBlendMode(s string) BlendModeType {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "multiply", "screen", "overlay", "darken", "lighten",
+		"color-dodge", "color-burn", "hard-light", "soft-light",
+		"difference", "exclusion", "hue", "saturation", "color", "luminosity":
+		return BlendModeType(s)
+	}
+	return BlendModeNormal
+}
+
+// IsValidBlendMode checks if a string is a valid CSS blend mode.
+func IsValidBlendMode(s string) bool {
+	validModes := []string{
+		"normal", "multiply", "screen", "overlay", "darken", "lighten",
+		"color-dodge", "color-burn", "hard-light", "soft-light",
+		"difference", "exclusion", "hue", "saturation", "color", "luminosity",
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+	for _, m := range validModes {
+		if s == m {
+			return true
+		}
+	}
+	return false
+}
+
+// ColorSchemeType represents the allowed color schemes for an element.
+type ColorSchemeType struct {
+	Light bool
+	Dark  bool
+	Only  bool
+}
+
+// ParseColorScheme parses a CSS color-scheme value.
+// Supported values: normal, light, dark, only, light dark
+func ParseColorScheme(s string) ColorSchemeType {
+	s = strings.ToLower(strings.TrimSpace(s))
+	result := ColorSchemeType{}
+
+	if s == "normal" || s == "" {
+		return result
+	}
+	if s == "only" {
+		result.Only = true
+		return result
+	}
+
+	parts := strings.Fields(s)
+	for _, p := range parts {
+		if p == "light" {
+			result.Light = true
+		} else if p == "dark" {
+			result.Dark = true
+		}
+	}
+	return result
+}
+
+// ScrollbarWidthType represents CSS scrollbar-width values.
+type ScrollbarWidthType string
+
+const (
+	ScrollbarWidthAuto  ScrollbarWidthType = "auto"
+	ScrollbarWidthThin  ScrollbarWidthType = "thin"
+	ScrollbarWidthNone ScrollbarWidthType = "none"
+)
+
+// ParseScrollbarWidth parses a CSS scrollbar-width value.
+func ParseScrollbarWidth(s string) ScrollbarWidthType {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "thin", "none":
+		return ScrollbarWidthType(s)
+	}
+	return ScrollbarWidthAuto
+}
+
+// ScrollbarColor represents CSS scrollbar-color values (thumb and track colors).
+type ScrollbarColor struct {
+	Thumb Color
+	Track Color
+}
+
+// ParseScrollbarColor parses a CSS scrollbar-color value.
+// Format: "color" or "color color" (thumb track)
+func ParseScrollbarColor(s string) ScrollbarColor {
+	s = strings.TrimSpace(s)
+	if s == "auto" || s == "" {
+		return ScrollbarColor{}
+	}
+
+	parts := strings.Fields(s)
+	if len(parts) >= 1 {
+		thumb := ParseColor(parts[0])
+		if len(parts) >= 2 {
+			track := ParseColor(parts[1])
+			return ScrollbarColor{Thumb: thumb, Track: track}
+		}
+		return ScrollbarColor{Thumb: thumb}
+	}
+	return ScrollbarColor{}
+}
+
+// AccentColorType represents the accent-color CSS property.
+type AccentColorType struct {
+	IsAuto bool
+	Color  Color
+}
+
+// ParseAccentColor parses a CSS accent-color value.
+func ParseAccentColor(s string) AccentColorType {
+	s = strings.TrimSpace(s)
+	if s == "auto" || s == "" {
+		return AccentColorType{IsAuto: true}
+	}
+	return AccentColorType{
+		IsAuto: false,
+		Color:  ParseColor(s),
+	}
+}
+
 // parseCounterStyle converts a string to CounterStyle.
 func parseCounterStyle(s string) CounterStyle {
 	switch strings.ToLower(s) {
