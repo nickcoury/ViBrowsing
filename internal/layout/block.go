@@ -1,6 +1,7 @@
 package layout
 
 import (
+	"log"
 	"strconv"
 	"strings"
 
@@ -424,6 +425,7 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 		FloatLeftEdge: ctx.FloatLeftEdge,
 		FloatRightEdge: ctx.FloatRightEdge,
 		FloatBottom:   ctx.FloatBottom,
+		Depth:         ctx.Depth, // Inherit parent's depth so tracking accumulates correctly
 	}
 	layoutChildren(box, childCtx)
 
