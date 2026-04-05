@@ -466,6 +466,36 @@ func FetchStreaming(rawURL string, userAgent string, timeoutSecs int, cookieJar 
 	return fmt.Errorf("too many redirects: %w", lastErr)
 }
 
+// FetchStylesheet fetches an external CSS stylesheet from a URL.
+// Returns the CSS text content and any error.
+// timeout is in seconds (0 = default 10s).
+func FetchStylesheet(rawURL string, userAgent string, timeoutSecs int, cookieJar *CookieJar) (string, error) {
+	if timeoutSecs <= 0 {
+		timeoutSecs = 10
+	}
+
+	resp, err := Fetch(rawURL, userAgent, timeoutSecs, cookieJar)
+	if err != nil {
+		return "", err
+	}
+
+	// Verify it's a CSS content type
+	contentType := resp.ContentType
+	if idx := strings.Index(contentType, ";"); idx != -1 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	if contentType != "text/css" && !strings.HasPrefix(contentType, "text/") {
+		// Some servers serve CSS with wrong content-type; still try to use it if it looks like CSS
+		cssText := string(resp.Body)
+		if len(cssText) > 0 && (strings.Contains(cssText, "{") || strings.Contains(cssText, "@")) {
+			return cssText, nil
+		}
+		return "", &FetchError{URL: rawURL, Reason: fmt.Sprintf("not CSS content-type: %s", resp.ContentType)}
+	}
+
+	return string(resp.Body), nil
+}
+
 // FetchWithMaxSize fetches a URL and returns an error if the body exceeds maxSize bytes.
 // This is a convenience wrapper around Fetch that enforces a custom size limit.
 func FetchWithMaxSize(rawURL string, userAgent string, timeoutSecs int, cookieJar *CookieJar, maxSize int) (*Response, error) {

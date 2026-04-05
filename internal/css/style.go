@@ -7,6 +7,73 @@ import (
 	"github.com/nickcoury/ViBrowsing/internal/html"
 )
 
+// inheritedProperties is the set of CSS properties that inherit from parent to child.
+// See https://www.w3.org/TR/CSS21/propidx.html and CSS3 specification.
+var inheritedProperties = map[string]bool{
+	"azimuth":               true,
+	"border-collapse":        true,
+	"border-spacing":         true,
+	"caption-side":           true,
+	"color":                  true,
+	"cursor":                 true,
+	"direction":              true,
+	"elevation":              true,
+	"empty-cells":            true,
+	"font-family":            true,
+	"font-size":              true,
+	"font-style":             true,
+	"font-variant":           true,
+	"font-weight":            true,
+	"font":                   true,
+	"letter-spacing":         true,
+	"line-height":            true,
+	"list-style-image":       true,
+	"list-style-position":    true,
+	"list-style-type":        true,
+	"list-style":             true,
+	"orphans":                true,
+	"overflow-wrap":          true,
+	"pitch-range":            true,
+	"pitch":                  true,
+	"quotes":                 true,
+	"richness":               true,
+	"speak-header":           true,
+	"speak-numeral":          true,
+	"speak-punctuation":      true,
+	"speak":                  true,
+	"speech-rate":            true,
+	"stress":                 true,
+	"text-align":             true,
+	"text-indent":            true,
+	"text-transform":         true,
+	"visibility":             true,
+	"voice-family":           true,
+	"volume":                 true,
+	"white-space":            true,
+	"widows":                 true,
+	"word-spacing":           true,
+	"writing-mode":           true,
+}
+
+// InheritStyle copies inherited properties from the parent style to the child.
+// Properties already set on child (author or inline) take precedence.
+func InheritStyle(parent, child map[string]string) map[string]string {
+	if parent == nil {
+		return child
+	}
+	// Copy child so we don't mutate the original
+	result := make(map[string]string)
+	for k, v := range child {
+		result[k] = v
+	}
+	for k, v := range parent {
+		if _, ok := result[k]; !ok && inheritedProperties[k] {
+			result[k] = v
+		}
+	}
+	return result
+}
+
 // Specificity represents a CSS selector's specificity (a, b, c).
 type Specificity struct {
 	ID, Class, Tag int
@@ -572,6 +639,108 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 	}
 
 	return props
+}
+
+// GetComputedStyle returns the computed style for an element, including all
+// CSS properties with their final values after the cascade and inheritance.
+// It takes a DOM node and a list of CSS rules, then walks up the parent chain
+// to apply inherited properties.
+func GetComputedStyle(node *html.Node, rules []Rule) map[string]string {
+	if node == nil {
+		return map[string]string{}
+	}
+
+	// Build up inherited properties by walking from root to immediate parent
+	// Each step applies the element's own style on top of inherited values
+	props := map[string]string{}
+	ancestor := node.Parent
+
+	// First pass: collect ancestors in order from root to immediate parent
+	var ancestors []*html.Node
+	for anc := ancestor; anc != nil; anc = anc.Parent {
+		if anc.Type == html.NodeElement {
+			ancestors = append(ancestors, anc)
+		}
+	}
+
+	// Reverse to process from root to immediate parent
+	// props accumulates inherited values as we go
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		anc := ancestors[i]
+		// Compute style for this ancestor (their own cascade, without inheritance from props)
+		ancStyle := ComputeStyleForNode(anc, rules)
+		// Inherit from it
+		inheritCSSProps(props, ancStyle)
+	}
+
+	// Finally, apply this element's own style (defaults + rules + inline)
+	ownStyle := ComputeStyleForNode(node, rules)
+	for k, v := range ownStyle {
+		props[k] = v
+	}
+
+	return props
+}
+
+// inheritCSSProps copies inheritable CSS properties from parentStyle to props.
+// Only properties that are not yet set in props (or are explicitly "inherit")
+// will be inherited from parentStyle.
+func inheritCSSProps(props, parentStyle map[string]string) {
+	// List of CSS properties that are inherited by default
+	inheritableProps := map[string]bool{
+		"color":                        true,
+		"font-family":                  true,
+		"font-size":                    true,
+		"font-style":                   true,
+		"font-weight":                  true,
+		"font-variant":                 true,
+		"font-stretch":                 true,
+		"font":                         true,
+		"letter-spacing":               true,
+		"word-spacing":                 true,
+		"line-height":                  true,
+		"text-align":                   true,
+		"text-indent":                  true,
+		"text-transform":               true,
+		"text-justify":                 true,
+		"direction":                    true,
+		"unicode-bidi":                 true,
+		"visibility":                   true,
+		"quotes":                       true,
+		"list-style-type":              true,
+		"list-style-position":          true,
+		"list-style-image":             true,
+		"list-style":                   true,
+		"cursor":                       true,
+		"white-space":                  true,
+		"caption-side":                  true,
+		"empty-cells":                  true,
+		"caret-color":                  true,
+		"appearance":                   true,
+		"hyphens":                      true,
+		"tab-size":                     true,
+		"text-decoration-line":         true,
+		"text-decoration-color":        true,
+		"text-decoration-style":        true,
+		"text-decoration-thickness":    true,
+		"text-underline-offset":        true,
+		"text-decoration-skip-ink":    true,
+		"writing-mode":                 true,
+		"text-orientation":             true,
+		"user-select":                  true,
+		"pointer-events":               true,
+	}
+
+	for prop, inheritable := range inheritableProps {
+		if inheritable {
+			if v, ok := parentStyle[prop]; ok {
+				// Only inherit if current value is "inherit" or not set
+				if currentVal, exists := props[prop]; !exists || currentVal == "inherit" {
+					props[prop] = v
+				}
+			}
+		}
+	}
 }
 
 // matchSelector returns true if the element matches the CSS selector.

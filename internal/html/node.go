@@ -507,6 +507,143 @@ func (n *Node) GetElementById(id string) *Node {
 	return nil
 }
 
+// DOMRect represents a rectangle in viewport coordinates (as returned by getBoundingClientRect).
+type DOMRect struct {
+	X, Y      float64 // viewport-relative x and y coordinates
+	Width     float64 // width of the border box
+	Height    float64 // height of the border box
+	Top       float64 // distance from top edge of viewport to top edge of element
+	Right     float64 // distance from left edge of viewport to right edge of element
+	Bottom    float64 // distance from top edge of viewport to bottom edge of element
+	Left      float64 // distance from left edge of viewport to left edge of element
+}
+
+// NewDOMRect creates a DOMRect with all properties properly computed from x, y, width, height.
+func NewDOMRect(x, y, width, height float64) *DOMRect {
+	return &DOMRect{
+		X:      x,
+		Y:      y,
+		Width:  width,
+		Height: height,
+		Top:    y,
+		Right:  x + width,
+		Bottom: y + height,
+		Left:   x,
+	}
+}
+
+// GetBoundingClientRect returns the bounding box of this node relative to the viewport.
+// It traverses the provided root Box tree to find the Box corresponding to this node.
+// Returns nil if no box is found for this node.
+func (n *Node) GetBoundingClientRect(rootBox interface{}) *DOMRect {
+	if n == nil {
+		return nil
+	}
+
+	// Try to find the box for this node by traversing the box tree
+	// The rootBox is expected to be a *layout.Box, but we use interface{} to avoid import cycle
+	// We use recursive approach similar to GetElementById
+
+	var findBox func(box interface{}, node *Node) interface{}
+	findBox = func(box interface{}, node *Node) interface{} {
+		if box == nil {
+			return nil
+		}
+
+		// Use reflection to access Box struct fields
+		// Box has: Type, Node *html.Node, ContentX, ContentY, ContentW, ContentH float64, Children []*Box
+		b := box
+
+		// Get the Node field from Box using type assertion approach
+		// Since we can't import layout, we use a convention: the box has these methods/fields
+		type boxInterface interface {
+			GetNode() *Node
+			GetContentX() float64
+			GetContentY() float64
+			GetContentW() float64
+			GetContentH() float64
+			GetChildren() []interface{}
+		}
+
+		if bi, ok := b.(boxInterface); ok {
+			if bi.GetNode() == node {
+				return b
+			}
+			for _, child := range bi.GetChildren() {
+				if found := findBox(child, node); found != nil {
+					return found
+				}
+			}
+		}
+		return nil
+	}
+
+	foundBox := findBox(rootBox, n)
+	if foundBox == nil {
+		return nil
+	}
+
+	// Extract dimensions from found box
+	type boxInterface interface {
+		GetContentX() float64
+		GetContentY() float64
+		GetContentW() float64
+		GetContentH() float64
+	}
+
+	bi := foundBox.(boxInterface)
+	x := bi.GetContentX()
+	y := bi.GetContentY()
+	w := bi.GetContentW()
+	h := bi.GetContentH()
+
+	return NewDOMRect(x, y, w, h)
+}
+
+// BoxNodeInterface is implemented by layout.Box to allow GetBoundingClientRect to work
+// without importing the layout package (avoiding circular dependency).
+type BoxNodeInterface interface {
+	GetNode() *Node
+	GetContentX() float64
+	GetContentY() float64
+	GetContentW() float64
+	GetContentH() float64
+	GetChildren() []BoxNodeInterface
+}
+
+// GetBoundingClientRectWithBox returns the bounding box of this node relative to the viewport.
+// This version accepts the root layout box directly and uses the layout.Box type.
+func (n *Node) GetBoundingClientRectWithBox(rootBox BoxNodeInterface) *DOMRect {
+	if n == nil || rootBox == nil {
+		return nil
+	}
+
+	var findBox func(box BoxNodeInterface) BoxNodeInterface
+	findBox = func(box BoxNodeInterface) BoxNodeInterface {
+		if box.GetNode() == n {
+			return box
+		}
+		for _, child := range box.GetChildren() {
+			if found := findBox(child); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+
+	foundBox := findBox(rootBox)
+	if foundBox == nil {
+		return nil
+	}
+
+	x := foundBox.GetContentX()
+	y := foundBox.GetContentY()
+	w := foundBox.GetContentW()
+	h := foundBox.GetContentH()
+
+	return NewDOMRect(x, y, w, h)
+}
+
 // ClassList returns a ClassList-like view of the element's classes.
 // Each returned ClassEntry has Add, Remove, Toggle, Contains methods.
 func (n *Node) ClassList() *ClassList {
@@ -638,6 +775,55 @@ func (n *Node) TextContent() string {
 // SetTextContent sets the text content of the node.
 func (n *Node) SetTextContent(text string) {
 	n.setTextContent(text)
+}
+
+// isHidden returns true if the element is hidden via CSS (display:none or visibility:hidden).
+func (n *Node) isHidden() bool {
+	if n.Type != NodeElement {
+		return false
+	}
+
+	// Check visibility:hidden
+	visibility := n.GetAttribute("visibility")
+	if visibility == "hidden" {
+		return true
+	}
+
+	// Check style attribute for visibility:hidden
+	style := n.GetAttribute("style")
+	if strings.Contains(style, "visibility:hidden") || strings.Contains(style, "visibility: hidden") {
+		return true
+	}
+
+	// Check display:none
+	display := n.GetAttribute("display")
+	if display == "none" {
+		return true
+	}
+
+	// Check style attribute for display:none
+	if strings.Contains(style, "display:none") || strings.Contains(style, "display: none") {
+		return true
+	}
+
+	return false
+}
+
+// isBlockElement returns true if the element is a block-level element.
+func (n *Node) isBlockElement() bool {
+	if n.Type != NodeElement {
+		return false
+	}
+	tag := strings.ToLower(n.TagName)
+	switch tag {
+	case "address", "blockquote", "br", "center", "dir", "div", "dl", "dt",
+		"fieldset", "figure", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+		"hr", "isindex", "li", "main", "menu", "nav", "ol", "p", "pre",
+		"section", "table", "tbody", "td", "tfoot", "th", "thead", "tr",
+		"ul":
+		return true
+	}
+	return false
 }
 
 // InnerHTML returns the inner HTML of the node.
@@ -802,15 +988,58 @@ func (n *Node) InsideTemplate() bool {
 	return false
 }
 
-// InnerText returns the concatenated text content of this node and all descendants.
+// InnerText returns the rendered text content of the node.
+// Unlike TextContent, InnerText respects CSS styling and will not return
+// text from elements with display:none or visibility:hidden.
+// It also adds newlines between block elements for proper rendering.
 func (n *Node) InnerText() string {
 	if n.Type == NodeText {
 		return n.Data
 	}
-	var text string
-	for _, child := range n.Children {
-		text += child.InnerText()
+
+	if n.Type == NodeElement {
+		// Skip hidden elements
+		if n.isHidden() {
+			return ""
+		}
 	}
+
+	var text string
+	prevWasBlock := false
+	for _, child := range n.Children {
+		// Skip hidden elements before processing
+		if child.Type == NodeElement && child.isHidden() {
+			prevWasBlock = false // Reset so next visible block doesn't add extra newline
+			continue
+		}
+
+		isBlock := child.Type == NodeElement && child.isBlockElement()
+		childText := child.InnerText()
+
+		// For block elements that produce empty text (like <br/>), add newline directly
+		if isBlock && childText == "" {
+			if text != "" && !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+			prevWasBlock = false
+			continue
+		}
+
+		if childText == "" {
+			continue
+		}
+
+		// Add newline BEFORE block elements (not after, to avoid trailing newlines)
+		if prevWasBlock {
+			if text != "" && !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+		}
+
+		text += childText
+		prevWasBlock = isBlock
+	}
+
 	return text
 }
 

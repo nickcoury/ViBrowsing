@@ -207,6 +207,32 @@ func navigateToURL(browser *BrowserState, url, userAgent string, viewportW, view
 		}
 	}
 
+	// Fetch external stylesheets from <link rel="stylesheet"> tags
+	linkNodes := dom.QuerySelectorAll("link")
+	for _, node := range linkNodes {
+		rel := strings.ToLower(node.GetAttribute("rel"))
+		if rel != "stylesheet" {
+			continue
+		}
+		href := node.GetAttribute("href")
+		if href == "" {
+			continue
+		}
+		// Resolve the stylesheet URL against the base URL
+		sheetURL := fetch.ResolveURL(href, resp.FinalURL)
+		if *flagDebug {
+			fmt.Printf("Fetching stylesheet: %s\n", sheetURL)
+		}
+		cssText, err := fetch.FetchStylesheet(sheetURL, *flagUserAgent, 10, browser.CookieJar)
+		if err != nil {
+			if *flagDebug {
+				fmt.Printf("  Failed to fetch stylesheet %s: %v\n", sheetURL, err)
+			}
+			continue
+		}
+		cssRules = append(cssRules, css.Parse(cssText)...)
+	}
+
 	// Build layout tree
 	layoutBox := layout.BuildLayoutTree(dom, cssRules, viewportW, viewportH)
 	if layoutBox == nil {

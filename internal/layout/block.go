@@ -126,6 +126,8 @@ func applyVerticalAlignments(ctx *LayoutContext) {
 	}
 
 	baseline := ctx.LineBoxStartY + ctx.LineBoxMaxAscent
+	// Line box bottom (for baseline alignment, this is where descents end)
+	lineBoxBottom := baseline + ctx.LineBoxMaxDescent
 
 	for _, child := range ctx.LineBoxChildren {
 		align := child.Style["vertical-align"]
@@ -135,30 +137,32 @@ func applyVerticalAlignments(ctx *LayoutContext) {
 
 		switch align {
 		case "top":
-			// Align to top of line box
+			// Align top of child to top of line box
 			child.ContentY = ctx.LineBoxStartY
 		case "bottom":
-			// Align to bottom of line box
-			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent - childH
+			// Align bottom of child to bottom of line box
+			child.ContentY = lineBoxBottom - childH
 		case "middle":
-			// Align to middle of line box
-			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent - childH/2
+			// Align middle of child to middle of line box
+			// middle is relative to the baseline: child center at baseline + half x-height offset
+			// CSS spec: vertically centered in the line box
+			child.ContentY = baseline - childH/2
 		case "text-top":
-			// Align to top of parent's text
+			// Align top of child to top of parent's content (above baseline)
 			child.ContentY = ctx.LineBoxStartY
 		case "text-bottom":
-			// Align to bottom of parent's text
-			child.ContentY = ctx.LineBoxStartY + ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent - childH
+			// Align bottom of child to bottom of parent's content (below baseline)
+			child.ContentY = lineBoxBottom - childH
 		case "sub":
-			// Subscript: lower than baseline
-			subscriptOffset := childH * 0.3
+			// Subscript: lower than baseline, positioned like superseded text
+			subscriptOffset := childH * 0.5
 			child.ContentY = baseline + subscriptOffset - childH + childH*0.1
 		case "super":
-			// Superscript: higher than baseline
-			supOffset := childH * 0.4
+			// Superscript: higher than baseline, positioned like superscripted text
+			supOffset := childH * 0.5
 			child.ContentY = baseline - supOffset
 		case "baseline", "":
-			// Default: align baseline
+			// Default: align baseline of child to line box baseline
 			child.ContentY = baseline - childAscent
 		default:
 			// Check for length value like "10px" or "1em"
@@ -168,7 +172,7 @@ func applyVerticalAlignments(ctx *LayoutContext) {
 				if l.Unit == css.UnitEm {
 					offset *= 16 // assume 16px font-size
 				}
-				child.ContentY = baseline - childH*0.75 + offset
+				child.ContentY = baseline - childAscent + offset
 			} else {
 				child.ContentY = baseline - childAscent
 			}
@@ -356,6 +360,7 @@ func layoutFloatChild(box *Box, ctx *LayoutContext) {
 
 func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	float := box.Style["float"]
+	clear := box.Style["clear"]
 
 	// Check for multi-column layout (CSS columns)
 	columnCount := 1
@@ -411,6 +416,26 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	// Compute y position: start at FloatBottom if we're below floats
 	// (ctx.Y might be below floats already, or at original cursor)
 	box.ContentY = ctx.Y + marginTop
+
+	// Handle clear property - blocks that clear floats must position below them
+	if clear == "left" || clear == "right" || clear == "both" {
+		// If there's a float we're clearing and ctx.Y is above its bottom,
+		// move to FloatBottom to clear it
+		if ctx.FloatBottom > ctx.Y {
+			box.ContentY = ctx.FloatBottom + marginTop
+		}
+		// After clearing, reset float edges to allow content to flow
+		if clear == "left" || clear == "both" {
+			ctx.FloatLeftEdge = 0
+		}
+		if clear == "right" || clear == "both" {
+			ctx.FloatRightEdge = ctx.Width
+		}
+		// After clear:both, also reset FloatBottom
+		if clear == "both" {
+			ctx.FloatBottom = 0
+		}
+	}
 
 	// Compute x position: reset to 0 to avoid inline cursor leaking into block positioning
 	xPos := 0.0

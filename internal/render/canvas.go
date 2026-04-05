@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/golang/freetype/truetype"
 	"github.com/nickcoury/ViBrowsing/internal/css"
@@ -139,6 +140,10 @@ type Canvas struct {
 	// advanceWidths caches avg advance widths per font+size
 	advanceWidths map[string]float64
 
+	// textMeasureCache caches text width measurements per font/size/text
+	// Key: "fontFamily:fontSize:text"
+	textMeasureCache sync.Map
+
 	// Default font
 	defaultFont *truetype.Font
 	defaultAdvWidth float64
@@ -211,6 +216,66 @@ func (c *Canvas) computeAdvanceWidth(f *truetype.Font, fontSize float64) float64
 		return float64(avgFixed) / 64.0
 	}
 	return fontSize * 0.6
+}
+
+// MeasureText returns the width in pixels of the text for the given font family and size.
+// Results are cached to avoid repeated measurements of the same text.
+func (c *Canvas) MeasureText(fontFamily string, fontSize float64, text string) float64 {
+	// Normalize font family name (same logic as GetFont)
+	family := strings.ToLower(fontFamily)
+	if family == "serif" || family == "times" || family == "georgia" {
+		family = "serif"
+	} else if family == "monospace" || family == "courier" || family == "consolas" {
+		family = "monospace"
+	} else {
+		family = "sans-serif"
+	}
+
+	// Create cache key: "fontFamily:fontSize:text"
+	cacheKey := family + ":" + strconv.FormatFloat(fontSize, 'f', 1, 64) + ":" + text
+
+	// Check cache
+	if cached, ok := c.textMeasureCache.Load(cacheKey); ok {
+		return cached.(float64)
+	}
+
+	// Get font
+	f, _ := c.GetFont(fontFamily, fontSize)
+	if f == nil {
+		return fontSize * 0.6 * float64(len(text))
+	}
+
+	// Measure the text by summing advance widths of each character
+	face := truetype.NewFace(f, &truetype.Options{
+		Size:    fontSize,
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+
+	var totalWidth fixed.Int26_6
+	prevRune := rune(-1)
+
+	for _, r := range text {
+		if prevRune >= 0 {
+			// Add kerning between previous and current character
+			totalWidth += face.Kern(prevRune, r)
+		}
+		_, _, _, adv, ok := face.Glyph(fixed.Point26_6{}, r)
+		if !ok {
+			// Use average advance width if glyph not found
+			adv = fixed.Int26_6(fontSize * 64 * 6 / 10)
+		}
+		totalWidth += adv
+		prevRune = r
+	}
+
+	// Convert from 26.6 fixed point to float
+	result := float64(totalWidth) / 64.0
+
+	// Store in cache
+	c.textMeasureCache.Store(cacheKey, result)
+
+	return result
 }
 
 // loadFontFile loads a TrueType font file and returns the parsed font
@@ -664,7 +729,7 @@ func (c *Canvas) ScrollIntoView(node *html.Node, options interface{}) {
 		return
 	}
 
-	c.scrollBoxIntoView(box, options)
+	c.ScrollBoxIntoView(box, options)
 }
 
 // ScrollBoxIntoView scrolls the given box into the viewport.
@@ -1063,6 +1128,87 @@ func applyOpacity(col css.Color, opacity float64) css.Color {
 	return css.Color{R: r, G: g, B: b, A: a}
 }
 
+// applyTransform applies a CSS transform to coordinates (x, y) relative to a box,
+// given the box's width and height, and the transform origin (defaults to center).
+// Returns the transformed coordinates (newX, newY).
+func applyTransform(x, y float64, t css.Transform, boxW, boxH float64) (newX, newY float64) {
+	// Default transform origin is center of the box
+	originX := boxW / 2
+	originY := boxH / 2
+
+	// Handle "none" transform - no transformation, return original coordinates
+	if t.Type == "none" {
+		return x, y
+	}
+
+	// Translate to origin, apply transform, translate back
+	// Step 1: Translate point to origin space
+	px := x - originX
+	py := y - originY
+
+	var tx, ty float64
+
+	switch t.Type {
+	case "rotate":
+		// Rotate around origin
+		angleRad := t.Rotate * math.Pi / 180
+		cosA := math.Cos(angleRad)
+		sinA := math.Sin(angleRad)
+		tx = px*cosA - py*sinA
+		ty = px*sinA + py*cosA
+
+	case "scale":
+		tx = px * t.ScaleX
+		ty = py * t.ScaleY
+
+	case "translate":
+		tx = px + t.TranslateX
+		ty = py + t.TranslateY
+
+	case "skew":
+		// skewX shifts x based on y, skewY shifts y based on x
+		skewXRad := t.SkewX * math.Pi / 180
+		skewYRad := t.SkewY * math.Pi / 180
+		tx = px + py*math.Tan(skewXRad)
+		ty = py + px*math.Tan(skewYRad)
+
+	case "matrix":
+		// matrix(a, b, c, d, e, f) = [a c e] [x]
+		//                           [b d f] [y]
+		//                           [0 0 1] [1]
+		m := t.Matrix
+		tx = m[0]*px + m[2]*py + m[4]
+		ty = m[1]*px + m[3]*py + m[5]
+
+	default:
+		tx, ty = px, py
+	}
+
+	// Step 3: Translate back from origin space
+	return tx + originX, ty + originY
+}
+
+// FillRectTransformed fills a rectangle with a color, applying a CSS transform.
+// The transform is applied around the box's center (transform-origin: center).
+func (c *Canvas) FillRectTransformed(x, y, w, h int, col color.Color, t css.Transform) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	boxW := float64(w)
+	boxH := float64(h)
+
+	for py := 0; py < h; py++ {
+		for px := 0; px < w; px++ {
+			// Apply transform to this pixel's position relative to box
+			tx, ty := applyTransform(float64(px), float64(py), t, boxW, boxH)
+			// Convert back to integer pixel coordinates
+			drawX := int(tx) + x
+			drawY := int(ty) + y
+			c.SetPixel(drawX, drawY, col)
+		}
+	}
+}
+
 // DrawBox renders a layout box and its children.
 func (c *Canvas) DrawBox(box *layout.Box) {
 	if box == nil {
@@ -1098,6 +1244,10 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 			}
 		}
 	}
+
+	// CSS Transform
+	transform := css.ParseTransform(box.Style["transform"])
+	hasTransform := transform.Type != "none"
 
 	// Background
 	bgColor := css.ParseColor(box.Style["background"])
@@ -1171,18 +1321,33 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Use rounded rect if border-radius is set
 	if borderRadiusPx.Value > 0 && borderRadiusPx.Unit == css.UnitPx {
 		cornerR := int(borderRadiusPx.Value)
-		c.DrawRoundedRect(marginX, marginY, marginW, marginH, cornerR, bgColor)
+		if hasTransform {
+			// For transformed elements, draw a transformed rectangle
+			c.FillRectTransformed(marginX, marginY, marginW, marginH, bgColor, transform)
+		} else {
+			c.DrawRoundedRect(marginX, marginY, marginW, marginH, cornerR, bgColor)
+		}
 		// Padding area (smaller rounded rect inside)
 		// Reduce corner radius for inner layers (approximation)
 		innerR := cornerR / 2
 		if paddingW > 0 && paddingH > 0 && innerR > 0 {
-			c.DrawRoundedRect(paddingX, paddingY, paddingW, paddingH, innerR, bgColor)
+			if hasTransform {
+				c.FillRectTransformed(paddingX, paddingY, paddingW, paddingH, bgColor, transform)
+			} else {
+				c.DrawRoundedRect(paddingX, paddingY, paddingW, paddingH, innerR, bgColor)
+			}
 		}
 	} else {
-		c.FillRect(marginX, marginY, marginW, marginH, bgColor)
-
-		if paddingW > 0 && paddingH > 0 {
-			c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
+		if hasTransform {
+			c.FillRectTransformed(marginX, marginY, marginW, marginH, bgColor, transform)
+			if paddingW > 0 && paddingH > 0 {
+				c.FillRectTransformed(paddingX, paddingY, paddingW, paddingH, bgColor, transform)
+			}
+		} else {
+			c.FillRect(marginX, marginY, marginW, marginH, bgColor)
+			if paddingW > 0 && paddingH > 0 {
+				c.FillRect(paddingX, paddingY, paddingW, paddingH, bgColor)
+			}
 		}
 	}
 

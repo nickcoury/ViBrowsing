@@ -955,3 +955,75 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
 - [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory usage stays under 500MB and completes within 30s
+
+---
+
+## 🆕 New Items (2026-04-08 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border separately; cells at shared edges should only draw outer half of border
+- [ ] **Fix CSS `font-family` cascading** — font-family is not properly inherited through the CSS cascade; when a parent has `font-family: Arial` and child has no explicit font-family, child should inherit Arial but currently gets serif
+- [ ] **Fix CSS `font-size` em unit resolution** — `font-size: 1.2em` on a span inside a div with `font-size: 20px` should resolve to 24px but may be incorrectly using body default 16px instead of parent 20px
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `line-height` proper rendering** — line-height should affect the height of inline boxes and the spacing between lines; currently may not be properly applied during inline layout
+- [ ] **Implement CSS `letter-spacing` in DrawText** — letter-spacing property should add extra space between characters; currently the property is stored but may not be applied during text rendering
+- [ ] **Implement CSS `word-spacing` in DrawText** — word-spacing property should add extra space after spaces/words; currently stored but not applied during text rendering
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table section layout** — table sections should organize rows properly; currently TableSectionBox type exists but sections may not affect visual rendering order
+
+### 🟡 High (CSS Selectors & Cascade)
+
+- [ ] **Fix `:first-child` selector** — `:first-child` should match when element is the first child of its parent (regardless of other node types like text nodes); currently may not work correctly
+- [ ] **Fix `:last-child` selector** — similar to first-child, should match when element is the last child of its parent
+- [ ] **Implement `:only-child` selector** — should match when element is the only child of its parent
+- [ ] **Implement `:nth-of-type()` pseudo-class** — counts elements of a specific type among siblings, different from :nth-child which counts all element children
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<output>` element fully** — the output element should show the result of a calculation, similar to a read-only text field with special semantic meaning
+- [ ] **Implement `<datalist>` element** — datalist provides autocomplete suggestions for input elements; should render as a hidden list referenced by input's list attribute
+- [ ] **Implement `<meter>` visual rendering** — meter should show a gauge value with color zones (green/yellow/red based on low/high/optimum attributes)
+- [ ] **Implement `<progress>` visual rendering** — progress bar should show completion percentage with animated fill when indeterminate
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `closest()` method** — returns the closest ancestor of the current element (including itself) that matches a given CSS selector; returns null if no match found
+- [ ] **Implement `matches()` method** — returns true if the element would be selected by the given CSS selector; throws SyntaxError if the selector is invalid
+- [ ] **Implement `scrollBy()` method on Element** — scrolls the element by a specified amount; different from window.scrollBy in that it scrolls the element's content
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement browser zoom** — Ctrl+/Ctrl- should zoom the page by scaling the viewport or applying CSS transform to the root box; should track zoom level and display in window title
+- [ ] **Implement focus indicator** — when navigating with Tab key, interactive elements should show visible focus ring (outline or box-shadow) as defined by `:focus-visible` pseudo-class
+- [ ] **Implement `<input type="checkbox">` visual** — checkboxes should render as small square boxes with check mark when checked, using unicode ballot box character or custom drawn shape
+
+### 🟢 Medium (Performance)
+
+- [ ] **Parallel layout for independent subtrees** — if a container has multiple independent block children (no float/positioned dependencies), layout them concurrently using goroutines
+- [ ] **Cache computed styles** — when the same element is queried for computed style multiple times without DOM changes, reuse the cached result from first computation
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-blend-mode`** — blend background-color and background-image together using specified blend mode (multiply, screen, overlay, etc.)
+- [ ] **Implement `mix-blend-mode` on boxes** — apply blend mode when drawing overlapping positioned elements; currently mix-blend-mode is stored in style but not applied during rendering
+
+### 🟠 Low (Networking & Protocol)
+
+- [ ] **Implement HTTP keep-alive** — reuse TCP connections for multiple requests to the same origin server instead of opening a new connection for each request
+- [ ] **Implement conditional GET with If-Modified-Since** — when fetching a URL that was previously retrieved, send Last-Modified header; if server responds with 304 Not Modified, use cached content
+
+### 🟠 Low (Internationalization)
+
+- [ ] **Implement `<bdo dir="rtl">`** — bidirectional text override element that forces text direction; used for mixing LTR and RTL content correctly
+- [ ] **Implement `lang` attribute on html element** — `<html lang="en">` should set the document's language, affecting speech synthesis, hyphenation, and :lang() selector matching
+
+### 🟠 Low (Accessibility)
+
+- [ ] **Implement `role` attribute rendering** — certain ARIA roles should affect how elements are announced by screen readers; roles like "button", "navigation", "main" have semantic meaning
+- [ ] **Implement `<summary>` and `<details>`** — the summary element is the visible label for a details element; clicking summary toggles visibility of details content
+
+---
+
+## 🆕 New Items (2026-04-07 Sprint) — Already Implemented

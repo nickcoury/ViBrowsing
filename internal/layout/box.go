@@ -124,15 +124,13 @@ func (b *Box) ScrollIntoView(options interface{}) int {
 func (b *Box) scrollIntoViewInternal(options interface{}, accumulatedY float64) int {
 	// Determine alignment preferences
 	blockAlign := "start"
-	var behavior string
 
 	if opts, ok := options.(map[string]interface{}); ok {
 		if block, ok := opts["block"].(string); ok {
 			blockAlign = block
 		}
-		if bh, ok := opts["behavior"].(string); ok {
-			behavior = bh
-		}
+		// behavior is used for smooth scrolling - stored but not actively used in this simplified version
+		_ = opts["behavior"]
 	} else if alignBool, ok := options.(bool); ok {
 		if alignBool {
 			blockAlign = "start"
@@ -237,6 +235,40 @@ func (b *Box) OuterHeight() float64 {
 		b.MarginBottom.Value
 }
 
+// GetNode returns the DOM node associated with this box.
+func (b *Box) GetNode() *html.Node {
+	return b.Node
+}
+
+// GetContentX returns the x coordinate of the content area.
+func (b *Box) GetContentX() float64 {
+	return b.ContentX
+}
+
+// GetContentY returns the y coordinate of the content area.
+func (b *Box) GetContentY() float64 {
+	return b.ContentY
+}
+
+// GetContentW returns the width of the content area.
+func (b *Box) GetContentW() float64 {
+	return b.ContentW
+}
+
+// GetContentH returns the height of the content area.
+func (b *Box) GetContentH() float64 {
+	return b.ContentH
+}
+
+// GetChildren returns the child boxes as BoxNodeInterface slice.
+func (b *Box) GetChildren() []html.BoxNodeInterface {
+	children := make([]html.BoxNodeInterface, len(b.Children))
+	for i, child := range b.Children {
+		children[i] = child
+	}
+	return children
+}
+
 // BuildLayoutTree converts a DOM tree to a layout tree.
 // It filters CSS rules by the viewport dimensions for @media query matching.
 func BuildLayoutTree(doc *html.Node, rules []css.Rule, viewportWidth int, viewportHeight int) *Box {
@@ -309,6 +341,12 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		return nil
 	}
 
+	// Skip script and style elements — their content should not be rendered
+	// (script content is JS, style content is CSS; neither should appear as text)
+	if node.TagName == "script" || node.TagName == "style" {
+		return nil
+	}
+
 	// Compute style
 	class := node.GetAttribute("class")
 	id := node.GetAttribute("id")
@@ -321,6 +359,11 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	// Merge nodeStyle into style (nodeStyle has attribute selectors applied)
 	for k, v := range nodeStyle {
 		style[k] = v
+	}
+
+	// Apply inheritance from parent style for inherited properties
+	if parentStyle != nil {
+		style = css.InheritStyle(parentStyle, style)
 	}
 
 	display := style["display"]
@@ -349,7 +392,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		"ul", "ol", "form", "pre",
 		"blockquote", "address", "article", "aside",
 		"footer", "header", "main", "nav", "section",
-		"figure", "figcaption", "noscript":
+		"noscript":
 		box.Type = BlockBox
 	case "table":
 		box.Type = TableBox

@@ -592,17 +592,20 @@ type GradientStop struct {
 
 // Transform represents a CSS 2D transform.
 type Transform struct {
-	Type     string    // "rotate", "scale", "translate", "none"
-	Rotate   float64   // rotation in degrees
-	ScaleX   float64   // scale X factor (1.0 = no scale)
-	ScaleY   float64   // scale Y factor (1.0 = no scale)
-	TranslateX float64 // translate X in pixels
-	TranslateY float64 // translate Y in pixels
+	Type       string    // "rotate", "scale", "translate", "skew", "matrix", "none"
+	Rotate     float64   // rotation in degrees
+	ScaleX     float64   // scale X factor (1.0 = no scale)
+	ScaleY     float64   // scale Y factor (1.0 = no scale)
+	TranslateX float64   // translate X in pixels
+	TranslateY float64   // translate Y in pixels
+	SkewX      float64   // skew X in degrees
+	SkewY      float64   // skew Y in degrees
+	Matrix     [6]float64 // matrix(a, b, c, d, e, f) 2D transformation matrix
 }
 
 // ParseTransform parses a CSS transform value.
-// Supports: rotate(<angle>), scale(<x>, <y>?), translate(<x>, <y>)
-// Examples: rotate(45deg), scale(1.5), translate(10px, 20px)
+// Supports: rotate(<angle>), scale(<x>, <y>?), translate(<x>, <y>), skew(<x>, <y>?), matrix(a,b,c,d,e,f)
+// Examples: rotate(45deg), scale(1.5), translate(10px, 20px), skew(10deg), matrix(1,0,0,1,0,0)
 func ParseTransform(s string) Transform {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "none" {
@@ -658,6 +661,42 @@ func ParseTransform(s string) Transform {
 		if len(parts) >= 2 {
 			vy := ParseLength(strings.TrimSpace(parts[1]))
 			t.TranslateY = vy.Value
+		}
+		return t
+	}
+
+	// Handle skew
+	if strings.HasPrefix(s, "skew(") && strings.HasSuffix(s, ")") {
+		inner := s[5 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		t.Type = "skew"
+		if len(parts) == 1 {
+			// skewX only
+			if angle, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(parts[0]), "deg"), 64); err == nil {
+				t.SkewX = angle
+			}
+		} else if len(parts) >= 2 {
+			if angle, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(parts[0]), "deg"), 64); err == nil {
+				t.SkewX = angle
+			}
+			if angle, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(parts[1]), "deg"), 64); err == nil {
+				t.SkewY = angle
+			}
+		}
+		return t
+	}
+
+	// Handle matrix
+	if strings.HasPrefix(s, "matrix(") && strings.HasSuffix(s, ")") {
+		inner := s[7 : len(s)-1]
+		parts := strings.Split(inner, ",")
+		if len(parts) == 6 {
+			t.Type = "matrix"
+			for i := 0; i < 6; i++ {
+				if v, err := strconv.ParseFloat(strings.TrimSpace(parts[i]), 64); err == nil {
+					t.Matrix[i] = v
+				}
+			}
 		}
 		return t
 	}
