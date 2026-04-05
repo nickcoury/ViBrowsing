@@ -12,6 +12,10 @@ import (
 // Pages with >10,000 levels of nesting can cause stack overflow in recursive layout.
 const MaxDOMDepth = 10000
 
+// MaxTextLength is the maximum text length allowed in a text box.
+// Text nodes longer than this are truncated to prevent memory issues.
+const MaxTextLength = 1024 * 1024 // 1MB characters
+
 // LayoutContext holds layout state for a single layout pass.
 type LayoutContext struct {
 	Width  float64 // containing block width
@@ -490,6 +494,12 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 
 	if box.Type == TextBox {
 		text := box.Node.Data
+
+		// Truncate extremely long text to prevent memory issues during layout
+		if len(text) > MaxTextLength {
+			text = text[:MaxTextLength]
+		}
+
 		whiteSpace := box.Style["white-space"]
 
 		// Resolve font-size to pixels, handling em units

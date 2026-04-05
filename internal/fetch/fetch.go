@@ -15,6 +15,10 @@ import (
 // Documents larger than this will cause a FetchError with Reason "document too large".
 const MaxDocumentSize = 10 * 1024 * 1024
 
+// MaxLineLength is the maximum characters allowed in a single line of text.
+// Lines exceeding this during streaming will cause a FetchError with Reason "line too long".
+const MaxLineLength = 1024 * 1024 // 1MB characters
+
 // IsTextContent returns false for binary content types that shouldn't be parsed as HTML.
 func IsTextContent(contentType string) bool {
 	if contentType == "" {
@@ -421,6 +425,7 @@ func FetchStreaming(rawURL string, userAgent string, timeoutSecs int, cookieJar 
 		// Read in chunks with size limit
 		buf := make([]byte, 32*1024) // 32KB chunks
 		totalSize := 0
+		lineLength := 0
 		for {
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
@@ -429,6 +434,18 @@ func FetchStreaming(rawURL string, userAgent string, timeoutSecs int, cookieJar 
 				if totalSize > maxSize {
 					resp.Body.Close()
 					return &FetchError{URL: rawURL, Reason: "document too large"}
+				}
+				// Check for extremely long lines (search for newlines)
+				for _, b := range chunk {
+					if b == '\n' {
+						lineLength = 0
+					} else {
+						lineLength++
+						if lineLength > MaxLineLength {
+							resp.Body.Close()
+							return &FetchError{URL: rawURL, Reason: "line too long"}
+						}
+					}
 				}
 				if err := callback(chunk); err != nil {
 					resp.Body.Close()

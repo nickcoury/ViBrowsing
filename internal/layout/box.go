@@ -2,6 +2,7 @@ package layout
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 
@@ -190,6 +191,13 @@ func findBody(n *html.Node) *html.Node {
 
 func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[string]string) *Box {
 	if node == nil {
+		return nil
+	}
+
+	// Check depth limit to prevent stack overflow from deeply nested DOM
+	if depth > MaxDOMDepth {
+		log.Printf("WARNING: Max DOM depth %d exceeded during box tree building at %s",
+			MaxDOMDepth, node.TagName)
 		return nil
 	}
 

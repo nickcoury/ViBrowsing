@@ -6,11 +6,19 @@ import (
 	"strings"
 )
 
+// MaxLineLength is the maximum characters allowed in a single line of text.
+// Lines exceeding this are split to prevent memory issues with very large HTML.
+const MaxLineLength = 1024 * 1024 // 1MB characters
+
+// MaxTokenLength is the maximum size of a single text token.
+// Tokens larger than this are split into multiple tokens.
+const MaxTokenLength = 64 * 1024 // 64KB
+
 // TokenType represents the type of an HTML token.
 type TokenType int
 
 const (
-	TokenDOCTYPE TokenType = iota
+	TokenDOCTYPE TokenType= iota
 	TokenStartTag
 	TokenEndTag
 	TokenComment
@@ -41,6 +49,7 @@ type Tokenizer struct {
 	done     bool
 	reader   io.Reader
 	bufReader *bufio.Reader
+	remainingText string // overflow from large text tokens
 }
 
 // NewTokenizer creates a new tokenizer from byte input.
@@ -100,7 +109,20 @@ func (t *Tokenizer) Next() *Token {
 			for t.pos < len(t.input) && t.input[t.pos] != '<' {
 				t.pos++
 			}
-			return &Token{Type: TokenCharacter, Data: decodeEntities(string(t.input[start:t.pos]))}
+			text := decodeEntities(string(t.input[start:t.pos]))
+
+			// Prepend any remaining text from previous oversized token
+			if t.remainingText != "" {
+				text = t.remainingText + text
+				t.remainingText = ""
+			}
+
+			// Check if text exceeds MaxLineLength and split if necessary
+			if len(text) > MaxLineLength {
+				return t.emitTextToken(text)
+			}
+
+			return &Token{Type: TokenCharacter, Data: text}
 		}
 
 		// Check for DOCTYPE first (must be before comment since "<!DOCTYPE" starts with "<!")
@@ -228,6 +250,23 @@ func (t *Tokenizer) Next() *Token {
 	return nil
 }
 
+// emitTextToken handles text that exceeds MaxLineLength by splitting it into
+// tokens of at most MaxTokenLength characters.
+func (t *Tokenizer) emitTextToken(text string) *Token {
+	// If text is very long, split it into chunks
+	if len(text) > MaxTokenLength {
+		// Take first chunk
+		chunk := text[:MaxTokenLength]
+		// Store remaining for next call
+		t.remainingText = text[MaxTokenLength:]
+		return &Token{Type: TokenCharacter, Data: chunk}
+	}
+
+	// Text is within MaxTokenLength but exceeds MaxLineLength
+	// Just return it as-is (the parser will handle truncation)
+	return &Token{Type: TokenCharacter, Data: text}
+}
+
 // match checks if the input at current position starts with s.
 func (t *Tokenizer) match(s string) bool {
 	if t.pos >= len(t.input) {
@@ -346,7 +385,7 @@ var namedEntities = map[string]rune{
 	"frac34": '\u00BE',
 }
 
-// decodeEntities decodes HTML named and numeric character references in a String.
+// decodeEntities decodes HTML named and numeric character references in a string.
 // Handles: &name; &#nnn; &#xhh;
 func decodeEntities(s string) string {
 	var result []rune

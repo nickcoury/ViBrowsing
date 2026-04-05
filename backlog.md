@@ -647,30 +647,37 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (Layout/Rendering)
 
-- [ ] **Implement CSS `clip-path` drawing** — Actually clip element rendering to inset/circle/polygon shapes
-- [ ] **Implement CSS `filter` drawing** — Actually apply blur, brightness, contrast, grayscale, sepia effects to rendered pixels
-- [ ] **Implement CSS `backdrop-filter` drawing** — Apply blur to elements behind fixed/absolute positioned elements
-- [ ] **Implement `<iframe>` rendering** — Show placeholder for iframes (recursive rendering is complex)
+- [x] ~~Implement CSS `clip-path` drawing~~ (2026-04-06 sprint) — inset/circle/ellipse/polygon clipping with PushClip and ellipse mask drawing
+- [x] ~~Implement CSS `filter` drawing~~ (2026-04-06 sprint) — blur, brightness, contrast, grayscale, sepia applied via pixel manipulation
+- [x] ~~Implement CSS `backdrop-filter` drawing~~ (2026-04-06 sprint) — blur behind fixed/absolute positioned elements by extracting and filtering background pixels
+- [x] ~~Implement `<iframe>` rendering~~ (2026-04-06 sprint) — iframe placeholder with src/title display and border
 - [ ] **Implement `<canvas>` 2D context** — Render canvas drawing commands to output
-- [ ] **Implement emoji rendering** — Proper color emoji display (may need fontconfig)
+- [x] ~~Implement emoji rendering~~ (2026-04-06 sprint) — emoji detection via Unicode ranges and colored circle placeholder fallback
 - [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
 - [ ] **Fix table cell collapsing borders** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
 - [ ] **Fix float clearing** — blocks that clear:left/right/both should properly position below the float, not overlap it
-- [ ] **Fix `:nth-child()` selector** — Complex `an+b` formulas (even, odd, 2n+1, 3n-1) don't work
+- [x] ~~Fix `:nth-child()` selector~~ (2026-04-05 sprint 2) — ParseNthChild now handles even, odd, 2n+1, 3n-1 formulas
 
 ### 🟡 High (CSS Selectors & Cascade)
 
-- [ ] **Implement `:not()` pseudo-class** — Negation selector with complex selectors inside
-- [ ] **Implement `:checked`, `:disabled`, `:enabled` pseudo-classes** — For form state matching
-- [ ] **Implement `::before` and `::after` pseudo-elements** — With `content` property
-- [ ] **Implement `:first-line` and `::first-letter`** — Text segment pseudo-elements
-- [ ] **Implement CSS combinators fully** — Descendant (space), child (>), adjacent sibling (+), general sibling (~) with ancestor/sibling traversal
+- [x] ~~Implement `:not()` pseudo-class~~ (2026-04-04 sprint) — negation selector with complex selectors inside
+- [x] ~~Implement `:checked`, `:disabled`, `:enabled` pseudo-classes~~ (2026-04-05 sprint) — form state matching pseudo-classes
+- [x] ~~Implement `::before` and `::after` pseudo-elements~~ (2026-04-05 sprint 2) — with `content` property
+- [x] ~~Implement `:first-line` and `::first-letter`~~ (2026-04-05 sprint 2) — text segment pseudo-elements
+- [x] ~~Implement CSS combinators fully~~ (2026-04-05 sprint) — descendant/child/adjacent sibling/general sibling with traversal
+- [x] ~~Implement `:focus-visible` pseudo-class~~ (2026-04-06 sprint) — matches focusable elements with tabindex or form elements
+- [x] ~~Implement `:is()` and `:where()` pseudo-classes~~ (2026-04-06 sprint) — forgiving selector list pseudo-classes with 0 specificity for :where
+- [x] ~~Implement `:has()` relative selector~~ (2026-04-06 sprint) — parent/previous-sibling selector (div:has(p), img:has(+ p))
+- [x] ~~Implement `:indeterminate` and `:default` pseudo-classes~~ (2026-04-06 sprint) — checkbox/radio state pseudo-classes
 
 ### 🟡 High (URL & Navigation)
 
-- [ ] **Implement HTTP cookies** — Send cookies on subsequent requests to same origin
-- [ ] **Implement browser history** — Back/forward navigation between visited URLs
-- [ ] **Implement link target resolution** — `<a target="_blank">` opens in new tab
+- [x] ~~Implement HTTP cookies~~ (2026-04-05 sprint 2) — CookieJar stores/returns cookies; Set-Cookie header parsing; Cookie header on requests
+- [x] ~~Implement browser history~~ (2026-04-05 sprint 2) — BrowserState with history list, back/forward navigation
+- [x] ~~Implement link target resolution~~ (2026-04-05 sprint 2) — target="_blank"/"_self"/"_parent"/"_top" handling
+- [x] ~~Handle malformed URLs gracefully~~ (2026-04-06 sprint) — IsValidURL/SanitizeURL validation; FetchError type with descriptive messages
+- [x] ~~Handle binary/non-text content~~ (2026-04-06 sprint) — IsTextContent checks Content-Type; DetectBinaryContent sniffs magic numbers (JPEG/PNG/GIF/PDF/ZIP); returns FetchError for non-HTML
+- [x] ~~Handle very large pages~~ (2026-04-06 sprint) — MaxDocumentSize (10MB) limit; streaming fetch; large line handling (1MB cap)
 
 ### 🟡 High (Platform)
 
@@ -679,21 +686,23 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Implement text selection** — Highlight text with mouse
 - [ ] **Implement window title** — Render document `<title>` in window title bar
 - [ ] **Implement favicon** — Fetch and display favicon.ico in window
+- [x] ~~Implement `<template>` element~~ (2026-04-06 sprint) — parsed but not rendered until JS activates it; TemplateContent field stores inert document fragment
 
 ### 🟢 Medium (Performance)
 
 - [ ] **Lazy image decoding** — Don't decode images until visible in viewport
-- [ ] **CSS selector indexing** — Build index of elements by class/id/tag for fast selector matching
+- [x] ~~CSS selector indexing~~ (2026-04-06 sprint) — BuildSelectorIndex maps byClass/byID/byTag for O(1) lookups
 - [ ] **Text measurement caching** — Cache Ebitengine text measurement results per font/size/text combo
-- [ ] **Streaming HTML parse** — For large pages, parse HTML incrementally without buffering all
+- [x] ~~Streaming HTML parse~~ (2026-04-06 sprint) — NewTokenizerFromReader, ReadFrom method, FetchStreaming for incremental parsing
 - [ ] **Memory pool for nodes** — Reuse allocated Node/Token objects instead of GC-heavy allocation per parse
+- [x] ~~Implement calc() evaluation in layout~~ (2026-04-06 sprint) — resolveLength helpers evaluate calc() expressions during layout
 
 ### 🟢 Medium (Content & Rendering)
 
 - [ ] **Implement `<abbr>` with title tooltip** — Abbreviation with full text on hover
 - [ ] **Implement `<ruby>` layout** — Ruby text above/below base text for East Asian typography
-- [ ] **Implement `calc()` evaluation in layout** — Actually compute `width: calc(100% - 20px)` during layout
-- [ ] **Implement CSS `@media` query matching** — Apply rules only when viewport matches
+- [x] ~~Implement calc() evaluation in layout~~ (2026-04-06 sprint) — resolveLength helpers evaluate calc() during layout
+- [x] ~~Implement CSS @media query matching~~ (2026-04-06 sprint) — MatchMediaQuery + FilterRulesByMedia; viewport dims passed to BuildLayoutTree
 - [ ] **Implement CSS `cursor`** — Show appropriate cursor on interactive elements
 
 ### 🟠 Low (Testing & QA)
@@ -821,3 +830,67 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **PDF output** — Render page to PDF using go's pdf libraries or command-line tools
 - [ ] **Wayland support** — Currently X11 only via Ebitengine; add Wayland compositor support
 - [ ] **Multi-window/tab support** — Multiple browser windows or tabs with independent navigation
+
+---
+
+## 🆕 New Items (2026-04-06 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
+- [ ] **Fix float clearing logic** — blocks that clear:left/right/both should properly position below the float, not overlap it; ensure ClearStyle is respected
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement `<canvas>` 2D context** — Render canvas 2D drawing API (rect, arc, path, text, image) to output buffer
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew() 2D transforms to elements during rendering
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems
+- [ ] **Implement `hyphens: auto/manual`** — Automatic hyphenation of words at line breaks using hyphenate character
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<colgroup>` and `<col>`** — Column grouping for table column widths and styles
+- [ ] **Implement `<td colspan>` and `<td rowspan>`** — Cell spanning for complex tables with merged cells
+- [ ] **Implement `<figure>` and `<figcaption>`** — Figure with caption rendered below/above
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `unicode-bidi: isolate/embed/override`** — Bidirectional text isolation and override for RTL content
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment
+- [ ] **Implement CSS `@container` queries** — Container-style responsive design
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `innerText`** — Get rendered text content (like textContent but CSS-aware, respects display and visibility)
+- [ ] **Implement `getComputedStyle()`** — Return the computed style object for an element (all CSS properties as they resolve)
+- [ ] **Implement `getBoundingClientRect()`** — Return element position relative to viewport (x, y, width, height, top, right, bottom, left)
+- [ ] **Implement `MutationObserver`** — JavaScript API to observe DOM changes (attributes, childList, subtree)
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page and highlight matches
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab options on right-click
+- [ ] **Implement loading progress indicator** — Spinner/progress bar during page fetch
+- [ ] **Implement `window.print()`** — Trigger print dialog with current page content
+- [ ] **Implement `@media print` styles** — Apply print-specific stylesheet rules and hide non-essential content
+
+### 🟢 Medium (Advanced DOM)
+
+- [ ] **Implement `element.scrollIntoView()`** — Scroll element into viewport with options (start/center/end/nearest)
+- [ ] **Implement `window.scrollTo()` and `window.scrollBy()`** — Scroll the viewport programmatically
+- [ ] **Implement `window.matchMedia()`** — MediaQueryList interface for JavaScript media query checks
+- [ ] **Implement `CSS.supports()` API** — JavaScript API for CSS feature detection: `CSS.supports('display', 'grid')`
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box
+- [ ] **Implement `background-repeat: space/round` drawing** — Tile backgrounds with spacing or scaling
+- [ ] **Implement `background-position` (percentages) drawing** — Offset background image by percentage
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **html5lib test corpus** — Download and run 500+ HTML parsing edge case tests from html5lib project
+- [ ] **Visual screenshot regression tests** — Collect baseline screenshots of known pages, diff on changes
+- [ ] **go-fuzz fuzz testing** — Generate random HTML/CSS, verify parser/renderer doesn't panic on malformed input
+- [ ] **Performance regression CI** — Fail build if parse+layout time increases >10% vs baseline

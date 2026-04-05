@@ -1,6 +1,15 @@
 package html
 
+import "log"
 import "strings"
+
+// MaxDOMDepth is the maximum allowed DOM nesting depth before stopping recursion.
+// Pages with >10,000 levels of nesting can cause stack overflow in recursive operations.
+const MaxDOMDepth = 10000
+
+// MaxTextNodeLength is the maximum length of a text node's Data field.
+// Text nodes exceeding this are capped to prevent memory issues.
+const MaxTextNodeLength = 1024 * 1024 // 1MB characters
 
 // voidElements are self-closing by nature in HTML.
 var voidElements = map[string]bool{
@@ -122,6 +131,17 @@ func (p *Parser) Parse() *Node {
 				parent := p.openStack[len(p.openStack)-1]
 				if child := parent.FindChildByTagName(tagName); child != nil {
 					p.openStack = append(p.openStack, child)
+				}
+				p.advance()
+				continue
+			}
+
+			// Check depth limit to prevent stack overflow from deeply nested DOM
+			if len(p.openStack) > MaxDOMDepth {
+				log.Printf("WARNING: Max DOM depth %d exceeded during parsing, treating remaining content as text", MaxDOMDepth)
+				// Treat the rest as text - just append a marker text node
+				if len(p.openStack) > 0 {
+					p.openStack[len(p.openStack)-1].AppendChild(NewText("[...truncated due to excessive nesting...]"))
 				}
 				p.advance()
 				continue
@@ -300,7 +320,12 @@ func (p *Parser) Parse() *Node {
 			p.advance()
 
 		case TokenCharacter:
-			text := strings.TrimSpace(token.Data)
+			text := token.Data
+			// Cap text length to prevent memory issues
+			if len(text) > MaxTextNodeLength {
+				text = text[:MaxTextNodeLength]
+			}
+			text = strings.TrimSpace(text)
 			if text != "" {
 				// Foster parenting: text inside table context goes to foster parent
 				if p.fosterParenting > 0 {
