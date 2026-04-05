@@ -1112,6 +1112,276 @@ func (c *Canvas) FillRect(x, y, w, h int, col color.Color) {
 	}
 }
 
+// blendColors applies a CSS blend mode to blend a foreground color with a background color.
+// The blendMode should be a CSS mix-blend-mode value like "multiply", "screen", etc.
+func blendColors(fg, bg css.Color, blendMode string) css.Color {
+	r1 := float64(fg.R) / 255.0
+	g1 := float64(fg.G) / 255.0
+	b1 := float64(fg.B) / 255.0
+	r2 := float64(bg.R) / 255.0
+	g2 := float64(bg.G) / 255.0
+	b2 := float64(bg.B) / 255.0
+
+	var r, g, b float64
+
+	switch blendMode {
+	case "multiply":
+		r = r1 * r2
+		g = g1 * g2
+		b = b1 * b2
+	case "screen":
+		r = 1 - (1-r1)*(1-r2)
+		g = 1 - (1-g1)*(1-g2)
+		b = 1 - (1-b1)*(1-b2)
+	case "overlay":
+		if r2 < 0.5 {
+			r = 2 * r1 * r2
+		} else {
+			r = 1 - 2*(1-r1)*(1-r2)
+		}
+		if g2 < 0.5 {
+			g = 2 * g1 * g2
+		} else {
+			g = 1 - 2*(1-g1)*(1-g2)
+		}
+		if b2 < 0.5 {
+			b = 2 * b1 * b2
+		} else {
+			b = 1 - 2*(1-b1)*(1-b2)
+		}
+	case "darken":
+		r = math.Min(r1, r2)
+		g = math.Min(g1, g2)
+		b = math.Min(b1, b2)
+	case "lighten":
+		r = math.Max(r1, r2)
+		g = math.Max(g1, g2)
+		b = math.Max(b1, b2)
+	case "color-dodge":
+		if r1 >= 1 {
+			r = 1
+		} else {
+			r = math.Min(1, r2/(1-r1))
+		}
+		if g1 >= 1 {
+			g = 1
+		} else {
+			g = math.Min(1, g2/(1-g1))
+		}
+		if b1 >= 1 {
+			b = 1
+		} else {
+			b = math.Min(1, b2/(1-b1))
+		}
+	case "color-burn":
+		if r1 <= 0 {
+			r = 0
+		} else {
+			r = math.Max(0, 1-(1-r2)/r1)
+		}
+		if g1 <= 0 {
+			g = 0
+		} else {
+			g = math.Max(0, 1-(1-g2)/g1)
+		}
+		if b1 <= 0 {
+			b = 0
+		} else {
+			b = math.Max(0, 1-(1-b2)/b1)
+		}
+	case "hard-light":
+		if r1 < 0.5 {
+			r = 2 * r1 * r2
+		} else {
+			r = 1 - 2*(1-r1)*(1-r2)
+		}
+		if g1 < 0.5 {
+			g = 2 * g1 * g2
+		} else {
+			g = 1 - 2*(1-g1)*(1-g2)
+		}
+		if b1 < 0.5 {
+			b = 2 * b1 * b2
+		} else {
+			b = 1 - 2*(1-b1)*(1-b2)
+		}
+	case "soft-light":
+		if r1 < 0.5 {
+			r = r2 - (1-2*r1)*r2*(1-r2)
+		} else {
+			if r2 < 0.25 {
+				r = r2 + (2*r1-1)*(r2 - r2*((16*r2-12)*r2+3)/8)
+			} else {
+				r = r2 + (2*r1-1)*(math.Sqrt(r2)-r2)
+			}
+		}
+		if g1 < 0.5 {
+			g = g2 - (1-2*g1)*g2*(1-g2)
+		} else {
+			if g2 < 0.25 {
+				g = g2 + (2*g1-1)*(g2 - g2*((16*g2-12)*g2+3)/8)
+			} else {
+				g = g2 + (2*g1-1)*(math.Sqrt(g2)-g2)
+			}
+		}
+		if b1 < 0.5 {
+			b = b2 - (1-2*b1)*b2*(1-b2)
+		} else {
+			if b2 < 0.25 {
+				b = b2 + (2*b1-1)*(b2 - b2*((16*b2-12)*b2+3)/8)
+			} else {
+				b = b2 + (2*b1-1)*(math.Sqrt(b2)-b2)
+			}
+		}
+	case "difference":
+		if r1 > r2 {
+			r = r1 - r2
+		} else {
+			r = r2 - r1
+		}
+		if g1 > g2 {
+			g = g1 - g2
+		} else {
+			g = g2 - g1
+		}
+		if b1 > b2 {
+			b = b1 - b2
+		} else {
+			b = b2 - b1
+		}
+	case "exclusion":
+		r = r1 + r2 - 2*r1*r2
+		g = g1 + g2 - 2*g1*g2
+		b = b1 + b2 - 2*b1*b2
+	case "hue", "saturation", "color", "luminosity":
+		// Use temporary variables to avoid compiler complaints
+		var h1Val, s1Val, l1Val, h2Val, s2Val, l2Val float64
+		h1Val, s1Val, l1Val = rgbToHSL(r1, g1, b1)
+		h2Val, s2Val, l2Val = rgbToHSL(r2, g2, b2)
+		var rH, gH, bH float64
+		switch blendMode {
+		case "hue":
+			rH, gH, bH = hslToRGB(h1Val, s2Val, l2Val)
+		case "saturation":
+			rH, gH, bH = hslToRGB(h2Val, s1Val, l2Val)
+		case "color":
+			rH, gH, bH = hslToRGB(h1Val, s2Val, l2Val)
+		case "luminosity":
+			rH, gH, bH = hslToRGB(h2Val, s2Val, l1Val)
+		}
+		r = rH
+		g = gH
+		b = bH
+	case "normal", "":
+		r = r1
+		g = g1
+		b = b1
+	default:
+		r = r1
+		g = g1
+		b = b1
+	}
+
+	// Clamp values
+	r = math.Max(0, math.Min(1, r))
+	g = math.Max(0, math.Min(1, g))
+	b = math.Max(0, math.Min(1, b))
+
+	return css.Color{
+		R: uint8(r * 255),
+		G: uint8(g * 255),
+		B: uint8(b * 255),
+		A: fg.A,
+	}
+}
+
+// rgbToHSL converts RGB (0-1) to HSL.
+func rgbToHSL(r, g, b float64) (h, s, l float64) {
+	max := r
+	if g > max {
+		max = g
+	}
+	if b > max {
+		max = b
+	}
+	min := r
+	if g < min {
+		min = g
+	}
+	if b < min {
+		min = b
+	}
+
+	l = (max + min) / 2
+
+	if max == min {
+		h = 0
+		s = 0
+		return
+	}
+
+	d := max - min
+	if l > 0.5 {
+		s = d / (2 - max - min)
+	} else {
+		s = d / (max + min)
+	}
+
+	if max == r {
+		h = (g - b) / d
+		if g < b {
+			h += 6
+		}
+	} else if max == g {
+		h = (b-r)/d + 2
+	} else {
+		h = (r-g)/d + 4
+	}
+	h /= 6
+	return
+}
+
+// hslToRGB converts HSL to RGB (0-1).
+func hslToRGB(h, s, l float64) (r, g, b float64) {
+	if s == 0 {
+		r = l
+		g = l
+		b = l
+		return
+	}
+
+	q := l * (1 + s)
+	if l > 0.5 {
+		q = l + s - l*s
+	}
+	p := 2*l - q
+
+	r = hueToRGB(p, q, h+1/3)
+	g = hueToRGB(p, q, h)
+	b = hueToRGB(p, q, h-1/3)
+	return
+}
+
+// hueToRGB helper for HSL to RGB conversion.
+func hueToRGB(p, q, t float64) float64 {
+	if t < 0 {
+		t += 1
+	}
+	if t > 1 {
+		t -= 1
+	}
+	if t < 1/6 {
+		return p + (q-p)*6*t
+	}
+	if t < 1/2 {
+		return q
+	}
+	if t < 2/3 {
+		return p + (q-p)*(2/3-t)*6
+	}
+	return p
+}
+
 // applyOpacity blends a CSS color with an opacity factor (0-1).
 func applyOpacity(col css.Color, opacity float64) css.Color {
 	if opacity <= 0 {
@@ -1529,6 +1799,21 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Legend element
 	if !isHidden && box.Type == layout.LegendBox && box.Node != nil {
 		c.DrawLegend(box)
+	}
+
+	// Details element
+	if !isHidden && box.Type == layout.DetailsBox && box.Node != nil {
+		c.DrawDetails(box)
+	}
+
+	// Summary element
+	if !isHidden && box.Type == layout.SummaryBox && box.Node != nil {
+		c.DrawSummary(box)
+	}
+
+	// Slot element (display:contents - renders nothing but children are projected)
+	if !isHidden && box.Type == layout.SlotBox && box.Node != nil {
+		c.DrawSlot(box)
 	}
 
 	// Children (only if not hidden)
@@ -2248,9 +2533,60 @@ func (c *Canvas) DrawIframe(box *layout.Box) {
 // loadImage fetches and decodes an image from a URL.
 // Returns the image or an error.
 func (c *Canvas) loadImage(src string) (image.Image, error) {
-	// TODO: implement actual image fetching and decoding
-	// For now, return nil so alt text / broken image icon is shown
-	return nil, nil
+	resp, err := fetch.Fetch(src, "", 30, nil)
+	if err != nil || resp == nil || resp.StatusCode != 200 {
+		return nil, err
+	}
+
+	// Decode based on content type or magic bytes
+	contentType := resp.ContentType
+	if contentType == "" {
+		// Try to detect from magic bytes
+		if len(resp.Body) >= 4 {
+			if resp.Body[0] == 0x89 && resp.Body[1] == 0x50 && resp.Body[2] == 0x4E && resp.Body[3] == 0x47 {
+				contentType = "image/png"
+			} else if resp.Body[0] == 0xFF && resp.Body[1] == 0xD8 {
+				contentType = "image/jpeg"
+			} else if resp.Body[0] == 0x47 && resp.Body[1] == 0x49 && resp.Body[2] == 0x46 {
+				contentType = "image/gif"
+			} else if len(resp.Body) >= 12 && string(resp.Body[0:12]) == "RIFF" && string(resp.Body[8:12]) == "WEBP" {
+				contentType = "image/webp"
+			}
+		}
+	}
+
+	reader := bytes.NewReader(resp.Body)
+
+	switch contentType {
+	case "image/png":
+		img, err := png.Decode(reader)
+		if err != nil {
+			return nil, err
+		}
+		return img, nil
+	case "image/jpeg", "image/jpg":
+		img, err := jpeg.Decode(reader)
+		if err != nil {
+			return nil, err
+		}
+		return img, nil
+	case "image/gif":
+		img, err := gif.Decode(reader)
+		if err != nil {
+			return nil, err
+		}
+		return img, nil
+	case "image/webp":
+		// WebP decode not in stdlib, return nil for now
+		return nil, nil
+	default:
+		// Try PNG as fallback
+		reader.Seek(0, 0)
+		if img, err := png.Decode(reader); err == nil {
+			return img, nil
+		}
+		return nil, nil
+	}
 }
 
 // loadBackgroundImage fetches and decodes a background image URL.
@@ -3563,6 +3899,97 @@ func (c *Canvas) DrawMeter(box *layout.Box) {
 	// Draw border
 	borderColor := css.Color{R: 180, G: 180, B: 180, A: 255}
 	c.DrawBorder(x, y, w, h, 1, borderColor)
+}
+
+// DrawDetails renders a <details> element with a disclosure triangle.
+// The summary is always visible; the rest of the content is toggled by open attribute.
+func (c *Canvas) DrawDetails(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 300
+	}
+	if h <= 0 {
+		h = 100
+	}
+
+	// Determine open state
+	isOpen := false
+	if box.Node != nil {
+		if openStr := box.Node.GetAttribute("open"); openStr != "" {
+			isOpen = true
+		}
+	}
+
+	// Draw background
+	bgColor := css.ParseColor(box.Style["background-color"])
+	if bgColor.A == 0 {
+		bgColor = css.Color{R: 255, G: 255, B: 255, A: 255}
+	}
+	c.FillRect(x, y, w, h, bgColor)
+
+	// Draw border
+	borderColor := css.Color{R: 180, G: 180, B: 180, A: 255}
+	c.DrawBorder(x, y, w, h, 1, borderColor)
+
+	// Draw disclosure triangle indicator (▶ collapsed / ▼ expanded)
+	triangleColor := css.Color{R: 80, G: 80, B: 80, A: 255}
+	triSize := 12
+	triX := x + 8
+	triY := y + 10
+
+	if isOpen {
+		// Draw ▼ (expanded) using filled triangles
+		for i := 0; i < triSize; i++ {
+			c.FillRect(triX+i/2, triY+i, triSize-i, 1, triangleColor)
+		}
+	} else {
+		// Draw ▶ (collapsed) using filled triangles
+		for i := 0; i < triSize; i++ {
+			c.FillRect(triX+i, triY+i/2, 1, triSize-i, triangleColor)
+		}
+	}
+}
+
+// DrawSummary renders a <summary> element inside a <details> element.
+// It acts as the label/header that users click to toggle the details.
+func (c *Canvas) DrawSummary(box *layout.Box) {
+	// Summary is rendered as part of the details element.
+	// Draw nothing special here - the text content will be drawn by the normal text rendering.
+	// The key visual indicator (▶/▼) is drawn by DrawDetails.
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 300
+	}
+	if h <= 0 {
+		h = 30
+	}
+
+	// Draw subtle background to distinguish summary from content
+	bgColor := css.Color{R: 245, G: 245, B: 245, A: 255}
+	c.FillRect(x, y, w, h, bgColor)
+}
+
+// DrawSlot renders a <slot> element for web components.
+// Slots project content from the light DOM into the shadow DOM.
+func (c *Canvas) DrawSlot(box *layout.Box) {
+	// Slots are display:contents - they don't render themselves.
+	// The content slotted into them is rendered as normal children.
+	// This is a no-op for the slot itself.
+}
+
+// DrawTemplate renders a <template> element.
+// Templates are parsed but their content is inert and not rendered.
+func (c *Canvas) DrawTemplate(box *layout.Box) {
+	// Template content is not rendered - it's stored as inert document fragment.
+	// This is a no-op for the template element itself.
 }
 
 // DrawDialog renders a <dialog> element with a modal backdrop.

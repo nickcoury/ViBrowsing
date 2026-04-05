@@ -171,7 +171,11 @@ func supportsPropertyValue(property, value string) bool {
 	case "writing-mode":
 		return value == "horizontal-tb" || value == "vertical-rl" || value == "vertical-lr"
 	case "unicode-bidi":
-		return true
+		switch value {
+		case "normal", "embed", "isolate", "bidi-override", "isolate-override":
+			return true
+		}
+		return false
 	case "tab-size":
 		return true
 	case "hyphens":

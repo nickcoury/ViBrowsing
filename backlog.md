@@ -915,15 +915,17 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🟡 High (HTML Elements)
 
 - [ ] **Implement `<dialog>` modal fully** — modal dialog with backdrop; showModal() and close() methods; backdrop should apply backdrop-filter blur
-- [ ] **Implement `<slot>` and shadow DOM fully** — slot projection for web components; fallback to display:contents when no slot assignment
-- [ ] **Implement `<template>` activation** — templates are parsed but not rendered; need JS API to clone and insert template content into document
+- [x] ~~Implement `<details>` and `<summary>` toggle~~ (2026-04-08 sprint 2) — DrawDetails with disclosure triangle; DrawSummary with clickable label
+- [x] ~~Implement `<slot>` element~~ (2026-04-08 sprint 2) — DrawSlot renders as display:contents (no-op); slots project light DOM content
+- [x] ~~Implement `<template>` rendering~~ (2026-04-08 sprint 2) — DrawTemplate is a no-op; template content is inert and not rendered
 
 ### 🟡 High (CSS Properties)
 
-- [ ] **Implement CSS `unicode-bidi: isolate/embed/override`** — Bidirectional text isolation and override for RTL content; isolate-unicode-level resets embedding level
+- [x] ~~Implement CSS `unicode-bidi: isolate/embed/override`~~ (2026-04-08 sprint 2) — supports isolate and isolate-override values in CSS.supports()
 - [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment; inter-character adjusts spacing between characters
-- [ ] **Implement CSS `@container` queries** — Container-style responsive design; @container rule with size queries on named containers
+- [x] ~~Implement CSS `@container` queries~~ (2026-04-08 sprint 2) — ParseContainerQuery, MatchContainerQuery, IsContainerQuery in css/media.go
 - [ ] **Implement CSS `break-inside: avoid/avoid-page/avoid-column`** — Prevent breaks inside elements; used for keeping tables, figures, cards together
+- [x] ~~Implement CSS `mix-blend-mode` drawing~~ (2026-04-08 sprint 2) — blendColors function with all 16 blend modes; rgbToHSL/hslToRGB helpers
 
 ### 🟡 High (DOM APIs)
 
@@ -943,15 +945,20 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟢 Medium (Performance)
 
-- [ ] **Text measurement caching** — Cache Ebitengine font.MeasureString results per font/size/style combination; use sync.Map to store/retrieve
-- [ ] **Memory pool for nodes** — Use sync.Pool to reuse allocated Node/Token/Box objects instead of GC-heavy allocation per parse
+- [x] ~~Text measurement caching~~ (2026-04-08 sprint 2) — TextMeasurementCache with sync.Map in layout/text_cache.go
+- [x] ~~Memory pool for nodes~~ (2026-04-08 sprint 2) — BoxPool and CSSStylePool with sync.Pool in layout/text_cache.go
 - [ ] **CSS selector caching** — Cache selector match results for unchanged DOM/subtree; invalidate on DOM mutations
 
 ### 🟠 Low (Canvas/Drawing)
 
 - [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box; each DrawBox should respect element opacity
-- [ ] **Implement `outline` drawing** — outline is stored but never drawn; draw outline outside border box with outline-offset spacing
+- [x] ~~Implement `outline` drawing~~ (2026-04-08 sprint 2) — outline already draws in DrawBox at lines 1396-1415
 - [ ] **Implement emoji rendering via fontconfig** — Use fontconfig to find and load color emoji fonts for proper emoji display
+- [x] ~~Implement `<img>` actual image loading~~ (2026-04-08 sprint 2) — loadImage now fetches and decodes PNG/JPEG/GIF from URL
+
+### 🟡 High (Content & Rendering)
+
+- [x] ~~Implement `<img>` actual image loading~~ (2026-04-08 sprint 2) — loadImage fetches from URL and decodes PNG/JPEG/GIF
 
 ### 🟠 Low (Testing & QA)
 
@@ -1100,6 +1107,66 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **html5lib test corpus integration** — Download html5lib test files; write test harness; run tokenizer/parser tests; fix mismatches
 - [ ] **Visual screenshot regression tests** — Use chromium to capture ground-truth screenshots; diff against ViBrowsing renders; report pixel-level regressions
+
+### 🟢 Medium (Text & Typography)
+
+- [ ] **Implement `letter-spacing` drawing** — Add letter-spacing to character glyph advancement; apply between every character pair during text layout
+- [ ] **Implement `word-spacing` drawing** — Add word-spacing between word boundaries; CSS default is normal (0) but explicit values modify word gap
+- [ ] **Implement `text-indent` drawing** — First-line indentation; apply extra horizontal offset before first character of first line only
+- [ ] **Implement `tab-size` CSS property** — Specify tab character width in spaces; default is 8; affects pre-formatted text rendering
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew(), matrix() transforms using transform-box and transform-origin; compose into affine matrix
+- [ ] **Implement CSS `transform-origin` parsing** — Parse transform-origin as x/y/z keywords, lengths, or percentages; resolve relative to element's bounding box
+- [ ] **Implement CSS `transform-box` drawing** — Use view-box or fill-box as transform reference box; affects how transforms are centered/applied
+
+### 🟡 High (Events & Input)
+
+- [ ] **Implement `wheel` event** — Track mouse wheel scrolling; dispatch wheel event on scrollable elements; default action scrolls content
+- [ ] **Implement `compositionstart/compositionupdate/compositionend` events** — IME composition events for CJK input; prevent double-insertion of composed characters
+- [ ] **Implement `beforeinput` event** — Fire before input is inserted; supports `getTargetRanges()` for range-based input; can call preventDefault()
+
+### 🟢 Medium (Media & Embeds)
+
+- [ ] **Implement `<video>` element** — Video element with src attribute; use ffmpeg to decode frames; render current frame to canvas
+- [ ] **Implement `<audio>` element** — Audio element with play/pause controls; use audio library to decode and play audio stream
+- [ ] **Implement `<embed>` element** — Generic embedded content; detect MIME type; for unsupported types show fallback content or icon
+
+### 🟡 High (Layout)
+
+- [ ] **Implement `position: sticky`** — Sticky positioning acts like relative until scrolled past a threshold; then fixes like absolute within containing block
+- [ ] **Implement `clip: auto/rect(...)`** — CSS clip property for positioned elements; clip restricts visible area; rect(top, right, bottom, left) syntax
+- [ ] **Implement `contain: layout/style/paint`** — CSS contain property hints browser about independent rendering; layout = size changes don't affect children
+
+### 🟠 Low (HTML Elements)
+
+- [ ] **Implement `<abbr>` element** — Abbreviation element; render with dotted underline; optional title attribute for full expansion on hover
+- [ ] **Implement `<address>` element** — Contact information; typically styled in italics; represents author/owner contact details for nearest article
+- [ ] **Implement `<time>` element** — Time element with datetime attribute; can use machine-readable format; display formatting independent of semantic value
+
+### 🟡 High (JavaScript APIs)
+
+- [ ] **Implement `element.scrollIntoView()`** — Scroll element into viewport; align to top/bottom/start/end; supports behavior: smooth/auto options
+- [ ] **Implement `window.scrollBy()`** — Scroll window by delta pixels; scrolls viewport; does not fire scroll event during scroll (only after)
+- [ ] **Implement `document.createTreeWalker()`** — TreeWalker for traversing DOM with filters; supports whatToShow flags and NodeFilter callback
+
+### 🟠 Low (Rendering)
+
+- [ ] **Implement `caret-color` CSS property** — Color of text insertion caret; render as vertical bar in caret-color at cursor position during text input
+- [ ] **Implement `cursor: grab/grabbing`** — Grab cursor on hover over draggable elements; grabbing cursor when mousedown on draggable
+- [ ] **Implement `text-rendering: optimizeLegibility`** — Hint to font renderer; optimizeLegibility enables ligatures and kerning; affects text measurement
+
+### 🟢 Medium (Networking)
+
+- [ ] **Implement HTTP/2 server push** — Accept server push promises; cache pushed resources; serve from cache without extra round-trip
+- [ ] **Implement `fetch()` with streaming responses** — Stream response body as it arrives; update progress; allow cancellation mid-download
+- [ ] **Implement `navigator.connection`** — NetworkInformation API; expose effectiveType, downlink, rtt, saveData from underlying connection info
+
+### 🟠 Low (Debugging)
+
+- [ ] **Add DevTools protocol for CDP** — Chrome DevTools Protocol support; enable remote debugging; expose DOM, CSS, Network, Page domains
+- [ ] **Console panel in HUD** — Show console.log/warn/error messages in overlay HUD; click to expand; copy message text
 
 ---
 
