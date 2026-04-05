@@ -906,7 +906,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (Layout/Rendering)
 
-- [ ] **Implement `<canvas>` 2D context** — Render canvas 2D drawing API (rect, arc, path, text, image) to output buffer; implement getContext('2d') returning CanvasRenderingContext2D
+- [x] ~~Implement `<canvas>` 2D context~~ (2026-04-08 sprint) — Canvas 2D Context2D with state management, paths, transforms, gradients, text, images
 - [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew(), matrix() 2D transforms to elements during rendering using transform-box reference
 - [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems; text flows top-to-bottom or bottom-to-top
 - [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — proper table section rendering order; these elements should not affect visual layout but organize table structure
@@ -927,9 +927,11 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (DOM APIs)
 
-- [ ] **Implement `getComputedStyle()`** — Return the computed style object for an element (all CSS properties as they resolve after cascade)
-- [ ] **Implement `getBoundingClientRect()`** — Return element position relative to viewport (x, y, width, height, top, right, bottom, left)
-- [ ] **Implement `innerText`** — Get rendered text content (like textContent but CSS-aware, respects display and visibility)
+- [x] ~~Implement `getComputedStyle()`~~ (2026-04-08 sprint) — GetComputedStyle function returns cascaded/inherited style map for element
+- [x] ~~Implement `getBoundingClientRect()`~~ (2026-04-07 sprint) — GetBoundingClientRect returns DOMRect with viewport-relative position and dimensions
+- [x] ~~Implement `innerText`~~ (2026-04-07 sprint) — InnerText returns CSS-aware rendered text (respects display/visibility)
+- [x] ~~Implement `closest()`~~ (2026-04-08 sprint) — closest() traverses ancestors (including self) to find matching CSS selector
+- [x] ~~Implement `matches()`~~ (2026-04-08 sprint) — matches() returns true if element would be selected by given CSS selector
 
 ### 🟢 Medium (Features)
 
@@ -1023,6 +1025,81 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Implement `role` attribute rendering** — certain ARIA roles should affect how elements are announced by screen readers; roles like "button", "navigation", "main" have semantic meaning
 - [ ] **Implement `<summary>` and `<details>`** — the summary element is the visible label for a details element; clicking summary toggles visibility of details content
+
+---
+
+## 🆕 New Items (2026-04-08 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border separately; cells at shared edges should only draw outer half of border
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline; currently each text box uses its own baseline
+- [ ] **Fix CSS `font-size` em unit resolution** — `font-size: 1.2em` inside a div with `font-size: 20px` should resolve to 24px but may incorrectly use body default 16px instead of parent 20px
+- [ ] **Fix `<colgroup>` width application** — column widths from colgroup/col elements are collected but not yet applied to table cell widths during layout
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK; text flows top-to-bottom (rl) or bottom-to-top (lr); inline boxes stack vertically instead of horizontally
+- [ ] **Implement CSS `unicode-bidi: isolate/embed/override`** — isolate/override values for RTL text; isolate-unicode-level resets embedding level; override forces LTR or RTL direction
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — inter-word adjusts space between words; inter-character adjusts space between characters for CJK text
+- [ ] **Implement CSS `@container` queries** — Container-style responsive design; @container rule with size queries on named containers; container-query library for parsing
+- [ ] **Implement CSS `break-inside: avoid/avoid-page/avoid-column`** — Prevent breaks inside elements; when laying out multi-column, don't break inside a box with break-inside: avoid
+- [ ] **Implement CSS `transform` drawing for all elements** — Currently transform parsing exists but transforms are not applied during rendering; applyTransform in DrawBox for rotated/scaled elements
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<dialog>` modal fully** — modal dialog with backdrop; showModal() and close() methods; backdrop applies backdrop-filter blur; ESC key closes modal
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table section rendering** — these elements organize table rows; tbody rows should render in document order; thead at top, tfoot at bottom regardless of source order
+- [ ] **Implement `<slot>` and shadow DOM fully** — slot projection for web components; fallback to display:contents when no slot assignment; named slots support
+
+### 🟡 High (CSS Selectors & Cascade)
+
+- [ ] **Implement `:nth-last-of-type()` pseudo-class** — counts from end of sibling list; `tr:nth-last-of-type(2)` selects second-to-last tr
+- [ ] **Implement `:only-of-type()` pseudo-class** — matches elements that are the only child of its type among siblings
+- [ ] **Implement `:placeholder-shown` on select** — matches when a select's placeholder option is selected; for styled dropdowns with placeholder text
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `scrollBy()` on Element** — scrolls the element by a specified amount; different from window.scrollBy; scrolls element's own content
+- [ ] **Implement `requestAnimationFrame()`** — schedules callback before next repaint; returns request ID for cancellation
+- [ ] **Implement `cancelAnimationFrame()`** — cancels a scheduled animation frame request
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page; highlight all matches; show count; navigate between matches with Enter/Shift+Enter
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab on right-click; menu appears at cursor position
+- [ ] **Implement loading progress indicator** — Spinner/progress bar during page fetch; updates from 0-100% as content loads; shows in window title
+- [ ] **Implement `window.print()`** — Trigger print dialog; applies @media print styles; renders to PDF or system print dialog
+- [ ] **Implement `@media print` styles** — Hide navigation, ads; expand hidden sections; optimize for paper (A4/Letter); page break avoidance
+
+### 🟢 Medium (Performance)
+
+- [ ] **Text measurement caching** — Cache Ebitengine font.MeasureString results per font/size/style; use sync.Map keyed by "font:size:text"; invalidate on font change
+- [ ] **Image lazy decoding** — Don't decode images until scrolled into viewport; use offscreen buffer; decode on background goroutine
+- [ ] **Memory pool for Box allocation** — Use sync.Pool for Box, Node, Token objects; reduce GC pressure during parse/layout of large documents
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-blend-mode`** — Blend background-color and background-image using multiply, screen, overlay, etc.; apply per-element when drawing
+- [ ] **Implement `mix-blend-mode` on positioned elements** — Apply blend mode when overlapping elements overlap; use Porter-Duff compositing
+- [ ] **Implement emoji rendering via fontconfig** — Use fontconfig to find and load color emoji fonts; detect emoji ranges and use emoji font instead of serif fallback
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement HTTP keep-alive** — Reuse TCP connections for multiple requests to same origin; connection pool with max connections per host
+- [ ] **Implement conditional GET with If-Modified-Since** — Send Last-Modified header on repeat requests; handle 304 Not Modified; use cached content on 304
+- [ ] **Implement `Accept-Encoding: gzip, deflate, br`** — Accept compressed responses; automatically decompress based on Content-Encoding header
+
+### 🟠 Low (Accessibility)
+
+- [ ] **Implement `role` attribute rendering** — ARIA roles affect semantic meaning; role="button" makes div clickable; role="navigation" marks landmark
+- [ ] **Implement `<summary>` and `<details>` toggle** — Summary is visible label; clicking toggles details content visibility; use CSS display toggle or explicit state
+- [ ] **Implement `<bdo dir="rtl">`** — Bidirectional text override; bdo with dir="rtl" reverses the direction of text content
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **html5lib test corpus integration** — Download html5lib test files; write test harness; run tokenizer/parser tests; fix mismatches
+- [ ] **Visual screenshot regression tests** — Use chromium to capture ground-truth screenshots; diff against ViBrowsing renders; report pixel-level regressions
 
 ---
 

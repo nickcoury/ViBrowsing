@@ -31,6 +31,8 @@ const (
 	UnitRem
 	UnitPercent
 	UnitAuto
+	UnitVw
+	UnitVh
 )
 
 // Length represents a CSS length value.
@@ -93,6 +95,10 @@ func ParseLength(s string) Length {
 		return Length{Value: value, Unit: UnitRem}
 	case "%":
 		return Length{Value: value, Unit: UnitPercent}
+	case "vw":
+		return Length{Value: value, Unit: UnitVw}
+	case "vh":
+		return Length{Value: value, Unit: UnitVh}
 	default:
 		return Length{Value: value, Unit: UnitPx}
 	}

@@ -988,6 +988,21 @@ func (n *Node) InsideTemplate() bool {
 	return false
 }
 
+// InsideStyleOrScript returns true if this node is a descendant of a <style> or <script> element.
+func (n *Node) InsideStyleOrScript() bool {
+	current := n.Parent
+	for current != nil {
+		if current.Type == NodeElement {
+			tag := current.TagName
+			if tag == "style" || tag == "script" {
+				return true
+			}
+		}
+		current = current.Parent
+	}
+	return false
+}
+
 // InnerText returns the rendered text content of the node.
 // Unlike TextContent, InnerText respects CSS styling and will not return
 // text from elements with display:none or visibility:hidden.
@@ -1010,6 +1025,16 @@ func (n *Node) InnerText() string {
 		// Skip hidden elements before processing
 		if child.Type == NodeElement && child.isHidden() {
 			prevWasBlock = false // Reset so next visible block doesn't add extra newline
+			continue
+		}
+
+		// Skip <style> and <script> elements and their content entirely
+		if child.Type == NodeElement && (child.TagName == "style" || child.TagName == "script") {
+			continue
+		}
+
+		// Skip text nodes inside style/script
+		if child.Type == NodeText && child.InsideStyleOrScript() {
 			continue
 		}
 

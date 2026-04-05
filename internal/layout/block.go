@@ -94,6 +94,10 @@ func resolveLengthWithFont(propName string, box *Box, containingDim float64, fon
 		return l.Value * fontSize
 	case css.UnitRem:
 		return l.Value * 16
+	case css.UnitVw:
+		return l.Value * containingDim / 100
+	case css.UnitVh:
+		return l.Value * containingDim / 100
 	}
 	return l.Value
 }
@@ -442,7 +446,25 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	if ctx.FloatLeftEdge > 0 {
 		xPos = ctx.FloatLeftEdge
 	}
-	box.ContentX = xPos + resolveLength("margin-left", box, ctx.Width)
+
+	// Handle margin: auto centering (margin-left: auto and margin-right: auto)
+	marginLeftStr := box.Style["margin-left"]
+	marginRightStr := box.Style["margin-right"]
+	marginLeftIsAuto := marginLeftStr == "auto"
+	marginRightIsAuto := marginRightStr == "auto"
+
+	if marginLeftIsAuto && marginRightIsAuto {
+		// Both margins auto = center the box horizontally
+		remaining := availWidth - width
+		if remaining > 0 {
+			marginLeft := remaining / 2
+			box.ContentX = xPos + marginLeft
+		} else {
+			box.ContentX = xPos
+		}
+	} else {
+		box.ContentX = xPos + resolveLength("margin-left", box, ctx.Width)
+	}
 
 	// Check if box overlaps floats — if so, move to next line below FloatBottom
 	boxEndX := box.ContentX + width
@@ -1339,6 +1361,12 @@ func computeWidth(box *Box, containingWidth float64) float64 {
 	switch l.Unit {
 	case css.UnitPercent:
 		return containingWidth * l.Value / 100
+	case css.UnitVw:
+		return l.Value * containingWidth / 100
+	case css.UnitVh:
+		return l.Value * containingWidth / 100
+	case css.UnitAuto:
+		return containingWidth
 	default:
 		return l.Value
 	}
