@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
+	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -14,6 +17,7 @@ import (
 	"github.com/nickcoury/ViBrowsing/internal/html"
 	"github.com/nickcoury/ViBrowsing/internal/layout"
 	"github.com/nickcoury/ViBrowsing/internal/render"
+	"github.com/nickcoury/ViBrowsing/internal/window"
 )
 
 // Browser holds the browser state
@@ -239,15 +243,29 @@ func (b *Browser) Update() error {
 			}
 		}
 
-		// Mouse wheel scrolling
-		_, wheelY := ebiten.Wheel()
-		if wheelY != 0 {
-			b.ScrollY -= int(wheelY * 50)
-			if b.ScrollY < 0 {
-				b.ScrollY = 0
-			}
-			if b.ScrollY > b.MaxScrollY {
-				b.ScrollY = b.MaxScrollY
+		// Mouse wheel scrolling - track deltaX and deltaY for wheel event
+		wheelX, wheelY := ebiten.Wheel()
+		if wheelX != 0 || wheelY != 0 {
+			// Create and dispatch wheel event to target element
+			target := b.getWheelEventTarget(mx, my)
+			if target != nil {
+				wheelEvent := b.createWheelEvent(wheelX, wheelY, target)
+				// Default action: scroll content unless prevented
+				if !wheelEvent.DefaultPrevented {
+					if wheelY != 0 {
+						b.ScrollY -= int(wheelY * 50)
+						if b.ScrollY < 0 {
+							b.ScrollY = 0
+						}
+						if b.ScrollY > b.MaxScrollY {
+							b.ScrollY = b.MaxScrollY
+						}
+					}
+					if wheelX != 0 {
+						// Horizontal scroll - for now just log, horizontal scrolling is less common
+						_ = wheelX // Reserved for future horizontal scroll support
+					}
+				}
 			}
 		}
 
@@ -385,6 +403,25 @@ func (b *Browser) Draw(screen *ebiten.Image) {
 
 	// Draw page content
 	if b.Page != nil && b.Page.Canvas != nil && !b.Loading {
+		// Debug: print canvas info
+		if b.Page.Canvas.Pixels != nil {
+			// Check a few pixel values
+			pix := b.Page.Canvas.Pixels
+			idx0 := pix.Pix[0]
+			idx1 := pix.Pix[1]
+			idx2 := pix.Pix[2]
+			idxMid := (b.Page.Canvas.Width*100 + 100) * 4
+			var midR, midG, midB uint8
+			if idxMid < len(pix.Pix) {
+				midR = pix.Pix[idxMid]
+				midG = pix.Pix[idxMid+1]
+				midB = pix.Pix[idxMid+2]
+			}
+			println(fmt.Sprintf("Canvas: %dx%d, Pixels len: %d, First pixels: %d,%d,%d Mid(%d,%d): %d,%d,%d",
+				b.Page.Canvas.Width, b.Page.Canvas.Height, len(pix.Pix),
+				idx0, idx1, idx2, 100, 100, midR, midG, midB))
+		}
+
 		// Create ebiten image from the canvas pixels
 		ebitenImg := ebiten.NewImageFromImage(b.Page.Canvas.Pixels)
 		opts := &ebiten.DrawImageOptions{}
@@ -528,7 +565,13 @@ func (b *Browser) fetchAndRenderSync(rawURL string) (*PageState, string) {
 		return nil, fmt.Sprintf("Fetch error: %v", err)
 	}
 
-	dom := html.Parse(resp.Body)
+	// Use decompressed body if available (handles gzip compression)
+	body := resp.Body
+	if resp.Decompressed != nil {
+		body = resp.Decompressed
+	}
+
+	dom := html.Parse(body)
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode)
@@ -580,7 +623,34 @@ func (b *Browser) fetchAndRenderSync(rawURL string) (*PageState, string) {
 		Links:  links,
 	}
 
+	// Debug: save canvas to file
+	if page.Canvas != nil && page.Canvas.Pixels != nil {
+		saved := image_to_png(page.Canvas.Pixels, page.Canvas.Width, page.Canvas.Height)
+		if saved {
+			println(fmt.Sprintf("Canvas DEBUG: saved %dx%d image", page.Canvas.Width, page.Canvas.Height))
+		}
+	}
+
 	return page, ""
+}
+
+// image_to_png saves RGBA pixels as PNG for debugging
+func image_to_png(pixels *image.RGBA, width, height int) bool {
+	f, err := os.Create(fmt.Sprintf("/tmp/vibrowsing_canvas_%d.png", time.Now().UnixNano()))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	// Create a new RGBA image from the pixel data
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	copy(img.Pix, pixels.Pix)
+
+	err = png.Encode(f, img)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 func extractLinks(layoutBox *layout.Box, dom *html.Node, baseURL string) []LinkInfo {
@@ -612,4 +682,25 @@ func extractLinks(layoutBox *layout.Box, dom *html.Node, baseURL string) []LinkI
 		})
 	}
 	return links
+}
+
+// getWheelEventTarget returns the target element for a wheel event based on mouse position.
+// Returns nil if the mouse is outside the content area.
+func (b *Browser) getWheelEventTarget(mx, my int) *window.EventTarget {
+	// Only dispatch wheel events to content area (below navbar)
+	if my < contentOffset {
+		return nil
+	}
+	// Return the document as the target for wheel events
+	// In a full implementation, this would find the specific element at position (mx, my)
+	return window.NewEventTarget()
+}
+
+// createWheelEvent creates a WheelEvent and dispatches it to the target.
+// Returns the wheel event (with DefaultPrevented potentially set by handlers).
+func (b *Browser) createWheelEvent(deltaX, deltaY float64, target *window.EventTarget) *window.WheelEvent {
+	we := window.NewWheelEvent(deltaX, deltaY, 0)
+	we.Target = target
+	target.DispatchEvent(&we.Event)
+	return we
 }

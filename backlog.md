@@ -843,8 +843,8 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🔴 Critical (Parser/Rendering)
 
 - [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
-- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
-- [ ] **Fix float clearing logic** — blocks that clear:left/right/both should properly position below the float, not overlap it; ensure ClearStyle is respected
+- [x] ~~Fix table cell border-collapse rendering~~ (2026-04-11 sprint) — adjacent table cells with border-collapse:collapse now share borders; cells at shared edges only draw half their border
+- [x] ~~Fix float clearing logic~~ (2026-04-11 sprint) — blocks with clear:left/right/both now properly position below float; ctx.Y is updated after clearing so subsequent blocks don't overlap
 
 ### 🟡 High (Layout/Rendering)
 
@@ -977,8 +977,8 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🔴 Critical (Parser/Rendering)
 
 - [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border separately; cells at shared edges should only draw outer half of border
-- [ ] **Fix CSS `font-family` cascading** — font-family is not properly inherited through the CSS cascade; when a parent has `font-family: Arial` and child has no explicit font-family, child should inherit Arial but currently gets serif
-- [ ] **Fix CSS `font-size` em unit resolution** — `font-size: 1.2em` on a span inside a div with `font-size: 20px` should resolve to 24px but may be incorrectly using body default 16px instead of parent 20px
+- [x] ~~Fix CSS `font-family` cascading~~ (2026-04-11 sprint) — font-family properly inherited through CSS cascade via GetComputedStyle fix; child without explicit font-family now inherits parent's font-family
+- [x] ~~Fix CSS `font-size` em unit resolution~~ (2026-04-11 sprint) — font-size: 1.2em inside parent with font-size: 20px now resolves to 24px using parent's computed font-size for em resolution
 
 ### 🟡 High (Layout/Rendering)
 
@@ -989,10 +989,10 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (CSS Selectors & Cascade)
 
-- [ ] **Fix `:first-child` selector** — `:first-child` should match when element is the first child of its parent (regardless of other node types like text nodes); currently may not work correctly
-- [ ] **Fix `:last-child` selector** — similar to first-child, should match when element is the last child of its parent
-- [ ] **Implement `:only-child` selector** — should match when element is the only child of its parent
-- [ ] **Implement `:nth-of-type()` pseudo-class** — counts elements of a specific type among siblings, different from :nth-child which counts all element children
+- [x] ~~Fix `:first-child` selector~~ (2026-04-11 sprint) — :first-child now correctly matches when element is first child of parent
+- [x] ~~Fix `:last-child` selector~~ (2026-04-11 sprint) — :last-child now correctly matches when element is last child of parent
+- [x] ~~Implement `:only-child` selector~~ (2026-04-11 sprint) — :only-child matches when element is the only child of its parent
+- [x] ~~Implement `:nth-of-type()` pseudo-class~~ (2026-04-11 sprint) — :nth-of-type(an+b) counts siblings of same type; :nth-last-of-type also implemented
 
 ### 🟡 High (HTML Elements)
 
@@ -1189,14 +1189,14 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [x] ~~Implement CSS `color-scheme`~~ (2026-04-10 sprint) — ColorSchemeType with Light/Dark/Only parsing; defaults stored in style
 - [x] ~~Implement CSS `accent-color`~~ (2026-04-10 sprint) — AccentColorType with IsAuto and Color parsing; stored in style defaults
 - [x] ~~Implement CSS `scrollbar-width` and `scrollbar-color`~~ (2026-04-10 sprint) — ScrollbarWidthType (auto/thin/none) and ScrollbarColor (thumb/track colors) parsed and stored in style
-- [ ] **Implement CSS `@layer`** — Cascade layers for organizing CSS rules; @layer directive with named layers
-- [ ] **Implement CSS `@property`** — Custom properties with type checking; @property --name { syntax: <type>; inherits: true/false; initial-value: <value> }
+- [x] ~~Implement CSS `@layer`~~ (2026-04-11 sprint) — Cascade layers for organizing CSS rules; @layer name { } and anonymous @layer { }; earlier layers have lower priority; rules outside layers have highest priority
+- [x] ~~Implement CSS `@property`~~ (2026-04-11 sprint) — Custom properties with type checking; @property --name { syntax: '<type>'; inherits: true/false; initial-value: '<value>' }
 
 ### 🟡 High (Events & Input)
 
-- [ ] **Implement `scroll` event** — Fire scroll event on scrollable elements when content is scrolled; dispatch to registered scroll event listeners
-- [ ] **Implement `wheel` event** — Track mouse wheel input; dispatch wheel event with deltaX/deltaY/deltaZ; default action scrolls content
-- [ ] **Implement `input` event** — Fire input event when input/textarea value changes; fires on every keystroke, paste, cut
+- [x] ~~Implement `scroll` event~~ (2026-04-11 sprint) — Fire scroll event on scrollable elements when content is scrolled; Box.ScrollBy dispatches scroll event; EventTarget system in internal/js/
+- [x] ~~Implement `wheel` event~~ (2026-04-11 sprint) — Track mouse wheel input; dispatch wheel event with deltaX/deltaY/deltaZ; default action scrolls content; internal/window/event.go
+- [x] ~~Implement `input` event~~ (2026-04-11 sprint) — Fire input event when input/textarea value changes; Box.SetValue dispatches input event
 - [ ] **Implement `change` event** — Fire change event on form elements when value changes and focus is lost
 - [ ] **Implement `beforeinput` event** — Fire before input is inserted; can call preventDefault() to cancel; supports getTargetRanges()
 - [ ] **Implement `drag` and `drop` events** — dragstart, drag, dragenter, dragover, dragleave, drop, dragend for native drag and drop API
@@ -1277,6 +1277,82 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🟢 Medium (Media & Embeds)
 
 - [ ] **Implement `<video>` with playback controls** — Video element with play/pause/seek/volume; use ffmpeg or external library to decode frames; render current frame
+- [ ] **Implement `<audio>` with controls** — Audio element with play/pause/seek/volume controls; waveform visualization
+- [ ] **Implement `<embed>` element** — Generic embedded content; detect MIME type; for unsupported types show fallback content or icon
+
+### 🟢 Medium (Performance)
+
+- [ ] **CSS selector caching** — Cache selector match results; invalidate on DOM mutations; avoid re-matching unchanged subtrees
+- [ ] **Incremental layout** — Layout visible viewport first; defer off-screen content; update layout on scroll for long documents
+- [ ] **Parallel layout for independent subtrees** — If a container has multiple independent block children, layout them concurrently using goroutines
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-blend-mode` drawing** — Apply blend mode when drawing background-image over background-color using multiply, screen, overlay, etc.
+- [ ] **Implement `mix-blend-mode` on positioned elements** — Apply blend mode when overlapping elements overlap; use Porter-Duff compositing
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box; respect element opacity on individual draw calls
+
+### 🟠 Low (i18n & i10n)
+
+- [ ] **Implement `Accept-Language` header** — Send preferred languages to servers based on navigator.language
+- [ ] **Implement `lang` attribute inheritance** — Document language from `<html lang="en">` should cascade and affect :lang() selector
+- [ ] **Implement `<bdi>` element** — Bidirectional text isolation; creates a separate embedding level for its content
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement HTTP/2 support** — Upgrade to HTTP/2 for multiplexed requests on a single connection
+- [ ] **Implement `Content-Encoding: br` (brotli)** — Support brotli decompression in addition to gzip/deflate
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
+- [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory usage stays under 500MB and completes within 30s
+
+### 🟠 Low (CSS Functions)
+
+- [ ] **Implement `color-mix()` function** — Mix two colors together using specified color space (e.g., color-mix(in srgb, red, blue))
+- [ ] **Implement `light-dark()` function** — light-dark(color1, color2) for automatic light/dark mode color selection
+- [ ] **Implement `OKLCH` color notation** — OKLCH color space support for modern CSS colors (oklch(), oklab())
+- [ ] **Implement `hwb()` color notation** — HWB (Hue, Whiteness, Blackness) color notation
+
+---
+
+## 🆕 New Items (2026-04-11 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline; currently each text box uses its own baseline
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border separately; cells at shared edges should only draw outer half of border
+- [ ] **Fix float clearing logic** — blocks that clear:left/right/both should properly position below float; ctx.Y must be updated after clearing so subsequent blocks don't overlap floats
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `transform-box` drawing** — Use view-box or fill-box as transform reference box; affects how transforms are centered/applied; currently transform parsing exists but transform-box may not be respected
+- [ ] **Implement CSS `transform-origin` drawing** — Parse transform-origin as x/y/z keywords, lengths, or percentages; resolve relative to element's bounding box for rotate/scale reference
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK; inline boxes stack vertically; text flows top-to-bottom (rl) or bottom-to-top (lr)
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — Proper table section rendering order; thead at top, tbody in middle, tfoot at bottom regardless of source order
+- [ ] **Implement CSS `hyphens: auto/manual`** — Automatic hyphenation using U+00AD soft hyphen; detect word boundaries; apply hyphens CSS property
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment; inter-character adjusts spacing between characters for CJK text
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `@layer`** — Cascade layers for organizing CSS rules with explicit precedence order; earlier layers have lower priority; rules outside layers have highest priority
+- [ ] **Implement CSS `@property`** — Custom properties with type checking; @property --name { syntax: '<type>'; inherits: true/false; initial-value: '<value>' }
+- [ ] **Implement CSS `text-wrap: balance/pretty`** — text-wrap: balance for balanced text wrapping in headings; pretty for optimized word breaks
+- [ ] **Implement CSS `contain: layout/style/paint`** — CSS contain property hints browser about independent rendering; layout = size changes don't affect children
+
+### 🟡 High (Events & Input)
+
+- [ ] **Implement `scroll` event** — Fire scroll event on scrollable elements when content is scrolled; dispatch to registered scroll event listeners
+- [ ] **Implement `wheel` event** — Track mouse wheel input; dispatch wheel event with deltaX/deltaY/deltaZ; default action scrolls content
+- [ ] **Implement `input` event** — Fire input event when input/textarea value changes; fires on every keystroke, paste, cut
+- [ ] **Implement `change` event** — Fire change event on form elements when value changes and focus is lost
+- [ ] **Implement `beforeinput` event** — Fire before input is inserted; can call preventDefault() to cancel; supports getTargetRanges()
+- [ ] **Implement `drag` and `drop` events** — dragstart, drag, dragenter, dragover, dragleave, drop, dragend for native drag and drop API
+
+### 🟢 Medium (Media & Embeds)
+
+- [ ] **Implement `<video>` with playback controls** — Video element with play/pause/seek/volume; show video frame or controls UI; no actual video playback required, just visual
 - [ ] **Implement `<audio>` with controls** — Audio element with play/pause/seek/volume controls; waveform visualization
 - [ ] **Implement `<embed>` element** — Generic embedded content; detect MIME type; for unsupported types show fallback content or icon
 

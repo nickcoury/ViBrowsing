@@ -7,9 +7,15 @@ import (
 // Supports checks if a CSS property/value pair is supported by the browser.
 // This implements the CSS.supports() API.
 // Usage: CSS.supports("display", "grid") or CSS.supports("(max-width: 768px)")
+// Also supports: CSS.supports("CSS", "@layer") to check @layer support.
 func Supports(property, value string) bool {
 	property = strings.TrimSpace(property)
 	value = strings.TrimSpace(value)
+
+	// Handle @layer support check: CSS.supports("CSS", "@layer")
+	if strings.ToLower(property) == "css" && strings.ToLower(value) == "@layer" {
+		return true // We support CSS @layer cascade
+	}
 
 	// Handle condition syntax: CSS.supports("(max-width: 768px)")
 	if strings.HasPrefix(property, "(") {

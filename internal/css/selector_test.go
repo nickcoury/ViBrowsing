@@ -86,6 +86,96 @@ func TestParseNthChild(t *testing.T) {
 	}
 }
 
+// TestMatchNthOfType tests the MatchNthChild function with ofType=true for :nth-of-type pseudo-class.
+// This tests that only siblings of the same element type are counted.
+func TestMatchNthOfType(t *testing.T) {
+	// Build a mixed DOM tree:
+	// parent
+	//   - div (index 0)
+	//   - span (index 1)
+	//   - div (index 2)
+	//   - p (index 3)
+	//   - div (index 4)
+	//   - span (index 5)
+	parent := html.NewElement("parent")
+	elements := []string{"div", "span", "div", "p", "div", "span"}
+	for i, tag := range elements {
+		el := html.NewElement(tag)
+		el.SetAttribute("id", "el"+string(rune('0'+i)))
+		parent.AppendChild(el)
+	}
+
+	children := parent.Children
+
+	tests := []struct {
+		name    string
+		target  int // which child (0-5) to test
+		formula string
+		last    bool
+		want    bool
+	}{
+		// For div elements: indices 0, 2, 4 → positions among divs are 1, 2, 3
+		// :nth-of-type(odd) on divs → 1st and 3rd div
+		{"div:nth-of-type(odd) on 1st div", 0, "odd", false, true},
+		{"div:nth-of-type(odd) on 2nd div", 2, "odd", false, false},
+		{"div:nth-of-type(odd) on 3rd div", 4, "odd", false, true},
+
+		// :nth-of-type(even) on divs → 2nd div only
+		{"div:nth-of-type(even) on 1st div", 0, "even", false, false},
+		{"div:nth-of-type(even) on 2nd div", 2, "even", false, true},
+		{"div:nth-of-type(even) on 3rd div", 4, "even", false, false},
+
+		// :nth-of-type(2n+1) = odd on divs
+		{"div:nth-of-type(2n+1) 1st", 0, "2n+1", false, true},
+		{"div:nth-of-type(2n+1) 2nd", 2, "2n+1", false, false},
+		{"div:nth-of-type(2n+1) 3rd", 4, "2n+1", false, true},
+
+		// :nth-of-type(3n) on divs → 3rd div only (position 3)
+		{"div:nth-of-type(3n) 1st", 0, "3n", false, false},
+		{"div:nth-of-type(3n) 2nd", 2, "3n", false, false},
+		{"div:nth-of-type(3n) 3rd", 4, "3n", false, true},
+
+		// :nth-of-type(2) on divs → 2nd div only
+		{"div:nth-of-type(2) 1st", 0, "2", false, false},
+		{"div:nth-of-type(2) 2nd", 2, "2", false, true},
+		{"div:nth-of-type(2) 3rd", 4, "2", false, false},
+
+		// For span elements: indices 1, 5 → positions among spans are 1, 2
+		// :nth-of-type(odd) on spans → 1st span
+		{"span:nth-of-type(odd) on 1st span", 1, "odd", false, true},
+		{"span:nth-of-type(odd) on 2nd span", 5, "odd", false, false},
+
+		// :nth-of-type(even) on spans → 2nd span
+		{"span:nth-of-type(even) on 1st span", 1, "even", false, false},
+		{"span:nth-of-type(even) on 2nd span", 5, "even", false, true},
+
+		// :nth-last-of-type (counting from end)
+		// For divs from end: last div is position 1, second-to-last is position 2, etc.
+		// div:nth-last-of-type(1) → last div (index 4)
+		{"div:nth-last-of-type(1) last div", 4, "1", true, true},
+		{"div:nth-last-of-type(1) not last div", 0, "1", true, false},
+		// div:nth-last-of-type(2) → second-to-last div (index 2)
+		{"div:nth-last-of-type(2) middle div", 2, "2", true, true},
+		{"div:nth-last-of-type(2) last div", 4, "2", true, false},
+
+		// :nth-last-of-type(odd) on divs from end
+		// Last div = position 1 (odd), second-to-last = position 2 (even)
+		{"div:nth-last-of-type(odd) last div", 4, "odd", true, true},
+		{"div:nth-last-of-type(odd) middle div", 2, "odd", true, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use ofType=true for :nth-of-type matching
+			got := MatchNthChild(children[tc.target], tc.formula, true, tc.last)
+			if got != tc.want {
+				t.Errorf("MatchNthChild(node at index %d (%s), %q, ofType=true, last=%v) = %v, want %v",
+					tc.target, children[tc.target].TagName, tc.formula, tc.last, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestMatchNthChild tests the MatchNthChild function.
 func TestMatchNthChild(t *testing.T) {
 	// Build a simple DOM tree for testing:
@@ -396,6 +486,75 @@ func TestMatchNodeSelectorNot(t *testing.T) {
 			if len(matches) != tc.matches {
 				t.Errorf("QuerySelectorAll(%q) returned %d matches, want %d",
 					tc.selector, len(matches), tc.matches)
+			}
+		})
+	}
+}
+
+// TestFirstLastOnlyChild tests :first-child, :last-child, and :only-child pseudo-classes.
+func TestFirstLastOnlyChild(t *testing.T) {
+	doc := html.NewDocument()
+	root := html.NewElement("html")
+	doc.AppendChild(root)
+
+	// Build test structure:
+	// body
+	//   - div#first (first child)
+	//   - div#middle (middle child)
+	//   - div#last (last child)
+	//   - span#only (only child of its parent)
+	body := html.NewElement("body")
+	root.AppendChild(body)
+
+	divFirst := html.NewElement("div")
+	divFirst.SetAttribute("id", "first")
+	body.AppendChild(divFirst)
+
+	divMiddle := html.NewElement("div")
+	divMiddle.SetAttribute("id", "middle")
+	body.AppendChild(divMiddle)
+
+	divLast := html.NewElement("div")
+	divLast.SetAttribute("id", "last")
+	body.AppendChild(divLast)
+
+	spanOnly := html.NewElement("span")
+	spanOnly.SetAttribute("id", "only")
+	divMiddle.AppendChild(spanOnly)
+
+	tests := []struct {
+		selector string
+		matches  int
+	}{
+		// :first-child
+		{"#first:first-child", 1},     // first div is first child
+		{"#middle:first-child", 0},    // middle div is not first child
+		{"#last:first-child", 0},      // last div is not first child
+		{"#only:first-child", 1},      // span is first (and only) child of div
+
+		// :last-child
+		{"#first:last-child", 0},      // first div is not last child
+		{"#middle:last-child", 0},     // middle div is not last child
+		{"#last:last-child", 1},       // last div is last child
+		{"#only:last-child", 1},       // span is last (and only) child of div
+
+		// :only-child
+		{"#first:only-child", 0},      // first div has siblings
+		{"#middle:only-child", 0},     // middle div has siblings
+		{"#last:only-child", 0},       // last div has siblings
+		{"#only:only-child", 1},       // span is only child of its parent
+
+		// Combined selectors
+		{"div:first-child", 1},        // only one div is first child
+		{"div:last-child", 1},          // only one div is last child
+		{"div:only-child", 0},          // no div is only child (they all have siblings)
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.selector, func(t *testing.T) {
+			matches := doc.QuerySelectorAll(tc.selector)
+			if len(matches) != tc.matches {
+				t.Errorf("QuerySelectorAll(%q) returned %d matches, want %d", tc.selector, len(matches), tc.matches)
 			}
 		})
 	}

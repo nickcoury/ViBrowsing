@@ -91,6 +91,12 @@ func resolveLengthWithFont(propName string, box *Box, containingDim float64, fon
 	case css.UnitPercent:
 		return containingDim * l.Value / 100
 	case css.UnitEm:
+		// For font-size em units, reference the parent's computed font-size
+		// not the passed-in fontSize (which is the current element's font-size)
+		if propName == "font-size" && box.Parent != nil {
+			parentFontSize := getParentFontSizePx(box.Parent)
+			return l.Value * parentFontSize
+		}
 		return l.Value * fontSize
 	case css.UnitRem:
 		return l.Value * 16
@@ -100,6 +106,36 @@ func resolveLengthWithFont(propName string, box *Box, containingDim float64, fon
 		return l.Value * containingDim / 100
 	}
 	return l.Value
+}
+
+// getParentFontSizePx returns the computed font-size in pixels for the parent box.
+// It handles em units by recursively computing the parent's parent font-size first.
+func getParentFontSizePx(box *Box) float64 {
+	if box == nil {
+		return 16 // default font size
+	}
+	parent := box.Parent
+	for parent != nil {
+		if parent.Type == BlockBox || parent.Type == FlexBox || parent.Type == PositionedBox {
+			fs := parent.Style["font-size"]
+			if fs == "" {
+				return 16
+			}
+			l := css.ParseLength(fs)
+			switch l.Unit {
+			case css.UnitEm:
+				// Recursively get grandparent's font-size
+				grandparentFS := getParentFontSizePx(parent)
+				return l.Value * grandparentFS
+			case css.UnitRem:
+				return l.Value * 16
+			default:
+				return l.Value
+			}
+		}
+		parent = parent.Parent
+	}
+	return 16 // default font size
 }
 
 // LayoutBlock performs block-level layout on a box tree.
@@ -439,6 +475,9 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 		if clear == "both" {
 			ctx.FloatBottom = 0
 		}
+		// FIX: Update ctx.Y to match the new box.ContentY after clearing floats
+		// This ensures subsequent blocks don't overlap with the cleared block
+		ctx.Y = box.ContentY
 	}
 
 	// Compute x position: reset to 0 to avoid inline cursor leaking into block positioning
@@ -519,6 +558,11 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		contentWidth = 800
 	}
 
+	// Check writing-mode for vertical text layout
+	// For vertical-rl and vertical-lr, inline content stacks vertically instead of horizontally
+	writingMode := box.Style["writing-mode"]
+	isVertical := writingMode == "vertical-rl" || writingMode == "vertical-lr"
+
 	// Handle <br> element - forced line break
 	if box.Type == InlineBox && box.Node != nil && box.Node.TagName == "br" {
 		fontSize := css.ParseLength(box.Style["font-size"]).Value
@@ -532,6 +576,7 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		lineHeightPx := lineHeight * fontSize
 
 		ctx.X = ctx.X
+		// For vertical writing mode, break moves to next vertical position
 		ctx.Y += lineHeightPx
 		// Flush previous line box
 		applyVerticalAlignments(ctx)
@@ -609,6 +654,11 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		lineHeightPx := lineHeight * fontSize
 		charWidth := fontSize * 0.6
 
+		// For vertical writing mode, text flows top-to-bottom or bottom-to-top
+		// and characters are rotated
+		isVerticalRL := writingMode == "vertical-rl"
+		isVerticalLR := writingMode == "vertical-lr"
+
 		x := ctx.X
 		startX := x
 		isPre := whiteSpace == "pre" || whiteSpace == "pre-wrap"
@@ -621,6 +671,7 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 			if c == '\n' {
 				if isPre {
 					x = ctx.X
+					// In vertical mode, newline moves to next vertical position
 					ctx.Y += lineHeightPx
 					x = ctx.X
 					wrapPrevWord = false
@@ -652,21 +703,47 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 			// word-wrap: break-word allows breaking even without hyphens/spaces
 			canBreakWord := wordWrap == "break-word" || overflowWrap == "break-word"
 
-			if canWrap && x+cw > contentWidth && x > ctx.X {
-				x = ctx.X
-				ctx.Y += lineHeightPx
-				wrapPrevWord = false
-				// Skip space at start of new line (normal mode)
-				if c == ' ' {
-					continue
+			// For vertical writing mode, contentHeight is the vertical constraint instead of contentWidth
+			// In vertical-rl, text flows top-to-bottom and wraps at vertical boundary (contentHeight)
+			// In vertical-lr, text also flows top-to-bottom but from left side
+			verticalBound := contentWidth // In vertical mode, this is actually height
+			if isVertical {
+				// For vertical writing, x represents vertical position, and wrapping checks vertical bound
+				if canWrap && x+cw > verticalBound && x > ctx.X {
+					x = ctx.X
+					ctx.Y += lineHeightPx
+					wrapPrevWord = false
+					// Skip space at start of new line (normal mode)
+					if c == ' ' {
+						continue
+					}
+				} else if canBreakWord && x+cw > verticalBound && x > ctx.X {
+					// Break long word without spaces
+					x = ctx.X
+					ctx.Y += lineHeightPx
+					wrapPrevWord = false
+					if c == ' ' {
+						continue
+					}
 				}
-			} else if canBreakWord && x+cw > contentWidth && x > ctx.X {
-				// Break long word without spaces
-				x = ctx.X
-				ctx.Y += lineHeightPx
-				wrapPrevWord = false
-				if c == ' ' {
-					continue
+			} else {
+				// Normal horizontal-tb layout
+				if canWrap && x+cw > contentWidth && x > ctx.X {
+					x = ctx.X
+					ctx.Y += lineHeightPx
+					wrapPrevWord = false
+					// Skip space at start of new line (normal mode)
+					if c == ' ' {
+						continue
+					}
+				} else if canBreakWord && x+cw > contentWidth && x > ctx.X {
+					// Break long word without spaces
+					x = ctx.X
+					ctx.Y += lineHeightPx
+					wrapPrevWord = false
+					if c == ' ' {
+						continue
+					}
 				}
 			}
 
@@ -676,32 +753,32 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 			}
 		}
 
-	// Set box to cover the entire text range
-	box.ContentX = startX
-	box.ContentY = ctx.LineBoxStartY
-	box.ContentW = x - startX
-	if box.ContentW < charWidth {
-		box.ContentW = charWidth
-	}
-	box.ContentH = lineHeightPx
-
-	// Track line box metrics - split into ascent (above baseline) and descent (below)
-	ascent := box.ContentH * 0.75
-	descent := box.ContentH * 0.25
-	if ascent > ctx.LineBoxMaxAscent {
-		ctx.LineBoxMaxAscent = ascent
-	}
-	if descent > ctx.LineBoxMaxDescent {
-		ctx.LineBoxMaxDescent = descent
-	}
-
-	// Add to line box
-	ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
-
-		// Advance cursor past the text
-		if x > ctx.X {
-			ctx.X = x
+		// Set box to cover the entire text range
+		box.ContentX = startX
+		box.ContentY = ctx.LineBoxStartY
+		box.ContentW = x - startX
+		if box.ContentW < charWidth {
+			box.ContentW = charWidth
 		}
+		box.ContentH = lineHeightPx
+
+		// Track line box metrics - split into ascent (above baseline) and descent (below)
+		ascent := box.ContentH * 0.75
+		descent := box.ContentH * 0.25
+		if ascent > ctx.LineBoxMaxAscent {
+			ctx.LineBoxMaxAscent = ascent
+		}
+		if descent > ctx.LineBoxMaxDescent {
+			ctx.LineBoxMaxDescent = descent
+		}
+
+		// Add to line box
+		ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
+
+			// Advance cursor past the text
+			if x > ctx.X {
+				ctx.X = x
+			}
 	} else {
 		// Inline element box
 		marginLeft := resolveLength("margin-left", box, ctx.Width)
@@ -1432,6 +1509,12 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 	var caption *Box
 	var tableRows []*Box
 	var colElements []*Box // col and colgroup elements for column info
+
+	// Separate section boxes to handle thead/tbody/tfoot ordering
+	var theadRows []*Box
+	var tbodyRows []*Box
+	var tfootRows []*Box
+
 	for _, child := range box.Children {
 		if child.Type == TableCaptionBox {
 			caption = child
@@ -1439,16 +1522,36 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 			// Collect col/colgroup elements for column width information
 			colElements = append(colElements, child)
 		} else if child.Type == TableRowBox {
+			// Rows directly under table (no section)
 			tableRows = append(tableRows, child)
 		} else if child.Type == TableSectionBox {
+			// Determine section type from tag name
+			sectionTag := ""
+			if child.Node != nil {
+				sectionTag = child.Node.TagName
+			}
 			// For section boxes, collect their row children
 			for _, secChild := range child.Children {
 				if secChild.Type == TableRowBox {
-					tableRows = append(tableRows, secChild)
+					switch sectionTag {
+					case "thead":
+						theadRows = append(theadRows, secChild)
+					case "tfoot":
+						tfootRows = append(tfootRows, secChild)
+					default:
+						// Default to tbody for unknown sections and "tbody" tag
+						tbodyRows = append(tbodyRows, secChild)
+					}
 				}
 			}
 		}
 	}
+
+	// Build ordered rows: thead first, then tbody, then tfoot
+	// This ensures proper table section rendering order regardless of source order
+	tableRows = append(tableRows, theadRows...)
+	tableRows = append(tableRows, tbodyRows...)
+	tableRows = append(tableRows, tfootRows...)
 
 	// Collect column widths from col/colgroup elements
 	// colgroups and cols can specify width via style or span attribute

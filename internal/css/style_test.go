@@ -397,6 +397,42 @@ func TestApplyDecl_FontSynthesis(t *testing.T) {
 	}
 }
 
+func TestGetComputedStyle_FontFamilyInheritance(t *testing.T) {
+	// Test that font-family properly inherits from parent to child
+	// When parent has font-family:Arial and child has no explicit font-family,
+	// child should compute font-family:Arial
+	doc := &html.Node{
+		Type: html.NodeDocument,
+	}
+	div := &html.Node{
+		Type:     html.NodeElement,
+		TagName:  "div",
+		Parent:   doc,
+		Children: []*html.Node{},
+	}
+	div.SetAttribute("style", "font-family: Arial")
+	span := &html.Node{
+		Type:     html.NodeElement,
+		TagName:  "span",
+		Parent:   div,
+		Children: []*html.Node{},
+	}
+	div.Children = append(div.Children, span)
+	doc.Children = append(doc.Children, div)
+
+	rules := []Rule{}
+
+	divStyle := GetComputedStyle(div, rules)
+	if divStyle["font-family"] != "Arial" {
+		t.Errorf("div: expected font-family=Arial, got %s", divStyle["font-family"])
+	}
+
+	spanStyle := GetComputedStyle(span, rules)
+	if spanStyle["font-family"] != "Arial" {
+		t.Errorf("span should inherit font-family=Arial from div, got %s", spanStyle["font-family"])
+	}
+}
+
 func TestApplyDecl_Hyphens(t *testing.T) {
 	doc := &html.Node{
 		Type: html.NodeDocument,

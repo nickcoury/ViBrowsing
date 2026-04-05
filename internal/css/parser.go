@@ -1,6 +1,7 @@
 package css
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -10,6 +11,41 @@ type Rule struct {
 	Selector    string
 	Declarations []Declaration
 	MediaQuery  string // e.g., "@media (max-width: 768px)" or "" for all
+	Layer       string // e.g., "utilities" or "" for unlayered rules. Anonymous layers use a generated unique name.
+}
+
+// LayerOrder tracks the declaration order of cascade layers.
+// Earlier layers have lower priority than later layers.
+type LayerOrder struct {
+	layers []string // layer names in declaration order
+}
+
+// GetLayerPriority returns the priority for a layer (higher = later = higher priority).
+// Unlayered rules (empty string) return math.MaxInt.
+// Returns -1 if the layer is not yet registered.
+func (lo *LayerOrder) GetLayerPriority(layer string) int {
+	if layer == "" {
+		return len(lo.layers) // unlayered has highest priority
+	}
+	for i, l := range lo.layers {
+		if l == layer {
+			return i
+		}
+	}
+	return -1
+}
+
+// RegisterLayer adds a layer to the order if not already present.
+func (lo *LayerOrder) RegisterLayer(layer string) {
+	if layer == "" {
+		return // don't register empty layer
+	}
+	for _, l := range lo.layers {
+		if l == layer {
+			return
+		}
+	}
+	lo.layers = append(lo.layers, layer)
 }
 
 // KeyframeRule represents a @keyframes rule: name { percentage { props } ... }.
@@ -17,6 +53,27 @@ type KeyframeRule struct {
 	Name     string
 	Keyframes map[float64]map[string]string // percentage (0-100) -> properties
 }
+
+// anonymousLayerCounter is used to generate unique anonymous layer names.
+var anonymousLayerCounter int
+
+// nextAnonymousLayerName returns a unique name for an anonymous @layer block.
+func nextAnonymousLayerName() string {
+	anonymousLayerCounter++
+	return fmt.Sprintf("__anonymous_layer_%d__", anonymousLayerCounter)
+}
+
+// RegisteredProperty represents a CSS @property custom property registration.
+// See https://drafts.css-houdini.org/css-properties-values-api/#the-at-property-rule
+type RegisteredProperty struct {
+	Name         string
+	Syntax       string // e.g., "<color>", "<number>", "<length>", "<percentage>", etc.
+	Inherits     bool
+	InitialValue string
+}
+
+// registeredProperties holds all @property custom property registrations.
+var registeredProperties = make(map[string]RegisteredProperty)
 
 // Declaration represents a CSS declaration: property: value.
 type Declaration struct {
@@ -83,6 +140,35 @@ func Parse(sheet string) []Rule {
 					i = skipBlock(sheet, j+1)
 					continue
 				}
+			if strings.HasPrefix(atName, "layer") {
+				// Parse @layer block
+				layerName := extractLayerName(atName)
+				layerContentStart := j + 1
+				layerDepth := 1
+				for layerDepth > 0 && layerContentStart < len(sheet) {
+					if sheet[layerContentStart] == '{' {
+						layerDepth++
+					} else if sheet[layerContentStart] == '}' {
+						layerDepth--
+					}
+					layerContentStart++
+				}
+				layerContent := sheet[j+1 : layerContentStart-1]
+				// Recursively parse the rules inside @layer
+				innerRules := parseLayerContent(layerContent, layerName)
+				rules = append(rules, innerRules...)
+				i = layerContentStart
+				continue
+			}
+			if strings.HasPrefix(atName, "property") {
+				// Parse @property custom property registration
+				prop := parseProperty(sheet, i)
+				if prop != nil {
+					registeredProperties[prop.Name] = *prop
+				}
+				i = skipBlock(sheet, j+1)
+				continue
+			}
 				// Skip the block
 				i = j + 1
 				i = skipBlock(sheet, i)
@@ -201,6 +287,66 @@ func parseKeyframes(sheet string, start int) *KeyframeRule {
 	}
 
 	return kf
+}
+
+// parseProperty parses a @property custom property registration block.
+// Format: @property --name { syntax: '<type>'; inherits: true|false; initial-value: '<value>'; }
+func parseProperty(sheet string, start int) *RegisteredProperty {
+	// Find the property name (starts with --)
+	j := start + 1 // skip '@'
+	for j < len(sheet) && (sheet[j] == ' ' || sheet[j] == '\t') {
+		j++
+	}
+	if j+2 >= len(sheet) || sheet[j] != '-' || sheet[j+1] != '-' {
+		return nil
+	}
+	j += 2 // skip '--'
+
+	// Read the property name until whitespace or brace
+	nameStart := j
+	for j < len(sheet) && sheet[j] != ' ' && sheet[j] != '\t' && sheet[j] != '{' && sheet[j] != ';' {
+		j++
+	}
+	propName := sheet[nameStart:j]
+	propName = strings.TrimSpace(propName)
+	if propName == "" || !strings.HasPrefix(propName, "--") {
+		return nil
+	}
+
+	// Find the opening brace
+	for j < len(sheet) && sheet[j] != '{' {
+		j++
+	}
+	if j >= len(sheet) {
+		return nil
+	}
+
+	// Parse the declarations inside the block
+	decls, _ := parseDeclarations(sheet, j+1)
+
+	prop := &RegisteredProperty{
+		Name: propName,
+	}
+
+	// Extract syntax, inherits, and initial-value from declarations
+	for _, d := range decls {
+		propLower := strings.ToLower(d.Property)
+		switch propLower {
+		case "syntax":
+			prop.Syntax = strings.Trim(d.Value, "'\"")
+		case "inherits":
+			prop.Inherits = strings.ToLower(d.Value) == "true"
+		case "initial-value":
+			prop.InitialValue = strings.Trim(d.Value, "'\"")
+		}
+	}
+
+	// Validate required fields
+	if prop.Syntax == "" || prop.InitialValue == "" {
+		return nil
+	}
+
+	return prop
 }
 
 // parseKeyframeSelectors parses a keyframe selector string like "from", "to", "50%", "0%, 100%", "25%, 75%".
@@ -367,4 +513,39 @@ func skipBlock(s string, i int) int {
 		}
 	}
 	return i
+}
+
+// extractLayerName extracts the layer name from an @layer directive.
+// @layer           -> "" (anonymous layer with unique name)
+// @layer name      -> "name"
+// @layer name1,    -> "name1" (comma-separated, take first)
+// @layer name.name -> "name.name" (nested layer)
+func extractLayerName(atName string) string {
+	// Remove @layer prefix
+	name := strings.TrimPrefix(atName, "layer")
+	name = strings.TrimSpace(name)
+
+	if name == "" {
+		// Anonymous @layer {} - generate unique name
+		return nextAnonymousLayerName()
+	}
+
+	// Handle comma-separated layer names: @layer foo, bar, baz
+	// Take the first one for simplicity
+	if idx := strings.Index(name, ","); idx >= 0 {
+		name = strings.TrimSpace(name[:idx])
+	}
+
+	return name
+}
+
+// parseLayerContent parses the content of a @layer block and assigns the layer name to all rules.
+func parseLayerContent(content string, layerName string) []Rule {
+	// Parse the content as regular CSS rules
+	innerRules := Parse(content)
+	// Assign the layer name to each rule
+	for i := range innerRules {
+		innerRules[i].Layer = layerName
+	}
+	return innerRules
 }

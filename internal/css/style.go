@@ -641,7 +641,13 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		props["display"] = "inline"
 	}
 
-	for _, rule := range rules {
+	// Build layer order from the rules
+	layerOrder := BuildLayerOrder(rules)
+
+	// Sort rules by layer priority (earlier layers first, unlayered last)
+	sortedRules := SortRulesByLayer(rules, layerOrder)
+
+	for _, rule := range sortedRules {
 		// Use node-aware selector matching for attribute selectors
 		if matchSelector(tagName, class, id, rule.Selector) {
 			// Also try node-aware matching for attribute selectors
@@ -694,9 +700,13 @@ func GetComputedStyle(node *html.Node, rules []Rule) map[string]string {
 	}
 
 	// Finally, apply this element's own style (defaults + rules + inline)
+	// Only apply if property is not already set (inherited values take precedence
+	// for inheritable properties that child has not explicitly set)
 	ownStyle := ComputeStyleForNode(node, rules)
 	for k, v := range ownStyle {
-		props[k] = v
+		if _, exists := props[k]; !exists {
+			props[k] = v
+		}
 	}
 
 	return props
@@ -2280,4 +2290,73 @@ func parseTransitionShorthand(props map[string]string, value string) {
 	if !setTimingFunc {
 		props["transition-timing-function"] = "ease"
 	}
+}
+
+// GetPropertyValue returns the computed value for a property.
+// For registered custom properties (via @property), it returns the initial-value.
+// For unregistered custom properties, it returns the fallback value or empty string.
+func GetPropertyValue(props map[string]string, name string) string {
+	// Check if this is a registered custom property
+	if reg, ok := registeredProperties[name]; ok {
+		return reg.InitialValue
+	}
+
+	// For unregistered custom properties, fall back to the value in props
+	if val, ok := props[name]; ok {
+		return val
+	}
+	return ""
+}
+
+// BuildLayerOrder creates a LayerOrder from a list of rules by extracting all layer names.
+func BuildLayerOrder(rules []Rule) *LayerOrder {
+	lo := &LayerOrder{}
+	for _, rule := range rules {
+		if rule.Layer != "" {
+			lo.RegisterLayer(rule.Layer)
+		}
+	}
+	return lo
+}
+
+// SortRulesByLayer sorts rules by layer priority.
+// Earlier layers have lower priority than later layers.
+// Rules within the same layer maintain their original order (stable sort).
+// Unlayered rules come after all layered rules (higher priority).
+func SortRulesByLayer(rules []Rule, layerOrder *LayerOrder) []Rule {
+	// Create a stable sort by layer priority
+	type ruleWithPriority struct {
+		rule     Rule
+		priority int
+	}
+
+	withPriority := make([]ruleWithPriority, len(rules))
+	for i, rule := range rules {
+		priority := layerOrder.GetLayerPriority(rule.Layer)
+		if priority == -1 {
+			// Unknown layer - treat as unlayered (highest priority)
+			priority = len(layerOrder.layers)
+		}
+		withPriority[i] = ruleWithPriority{rule: rule, priority: priority}
+	}
+
+	// Stable sort by priority
+	sorted := make([]Rule, len(rules))
+	for i, wp := range withPriority {
+		sorted[i] = wp.rule
+	}
+
+	// Simple bubble sort for stability (layers are usually few)
+	for i := 0; i < len(sorted); i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			pi := withPriority[i].priority
+			pj := withPriority[j].priority
+			if pi > pj {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+				withPriority[i], withPriority[j] = withPriority[j], withPriority[i]
+			}
+		}
+	}
+
+	return sorted
 }

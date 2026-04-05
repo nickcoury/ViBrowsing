@@ -5,9 +5,11 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/html"
+	"github.com/nickcoury/ViBrowsing/internal/js"
 )
 
 // BoxType represents the type of layout box.
@@ -100,6 +102,15 @@ type Box struct {
 	ScrollTop   float64 // vertical scroll position
 	ScrollWidth  float64 // total scrollable width
 	ScrollHeight float64 // total scrollable height
+
+	// Event handling
+	mu              sync.RWMutex
+	eventTarget     *js.EventTarget
+	lastScrollLeft  float64 // tracks scroll changes for event dispatch
+	lastScrollTop   float64
+
+	// Value for input/textarea elements
+	value string
 }
 
 // FindBoxByNode finds the first box in the tree that corresponds to the given DOM node.
@@ -224,7 +235,114 @@ func (b *Box) ScrollBy(x interface{}, yOpt ...interface{}) (scrollLeft, scrollTo
 		}
 	}
 
+	// Dispatch scroll event if position changed
+	b.DispatchScrollEvent()
+
 	return b.ScrollLeft, b.ScrollTop
+}
+
+// GetEventTarget returns the event target for this box, creating it if needed.
+func (b *Box) GetEventTarget() *js.EventTarget {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.eventTarget == nil {
+		b.eventTarget = js.NewEventTarget()
+	}
+	return b.eventTarget
+}
+
+// AddEventListener adds an event listener for the given event type.
+func (b *Box) AddEventListener(eventType js.EventType, listener js.EventListener) {
+	b.GetEventTarget().AddEventListener(eventType, listener)
+}
+
+// RemoveEventListener removes an event listener for the given event type.
+func (b *Box) RemoveEventListener(eventType js.EventType, listener js.EventListener) {
+	b.GetEventTarget().RemoveEventListener(eventType, listener)
+}
+
+// DispatchScrollEvent dispatches a scroll event if the scroll position changed.
+// This should be called after scroll operations (ScrollBy, wheel events, etc.).
+func (b *Box) DispatchScrollEvent() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.eventTarget == nil {
+		return
+	}
+
+	// Check if scroll position actually changed
+	if b.lastScrollLeft == b.ScrollLeft && b.lastScrollTop == b.ScrollTop {
+		return
+	}
+
+	event := js.NewScrollEvent(b.ScrollLeft, b.ScrollTop)
+	b.eventTarget.DispatchEvent(&event.Event)
+
+	b.lastScrollLeft = b.ScrollLeft
+	b.lastScrollTop = b.ScrollTop
+}
+
+// HasScrollListeners returns true if there are scroll event listeners.
+func (b *Box) HasScrollListeners() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.eventTarget == nil {
+		return false
+	}
+	return b.eventTarget.HasEventListeners(js.EventScroll)
+}
+
+// GetValue returns the value of an input/textarea element.
+func (b *Box) GetValue() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.value
+}
+
+// SetValue sets the value of an input/textarea element and dispatches an input event.
+// This should be called when the user types, pastes, cuts, or otherwise modifies
+// the value of an input or textarea element.
+func (b *Box) SetValue(newValue string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.value == newValue {
+		return
+	}
+
+	b.value = newValue
+
+	// Dispatch input event if there are listeners
+	if b.eventTarget != nil {
+		event := js.NewInputEvent(newValue)
+		b.eventTarget.DispatchEvent(&event.Event)
+	}
+}
+
+// DispatchInputEvent dispatches an input event for the current value.
+// This can be called directly when the input mechanism (like paste or cut)
+// doesn't go through SetValue.
+func (b *Box) DispatchInputEvent() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.eventTarget == nil {
+		return
+	}
+
+	event := js.NewInputEvent(b.value)
+	b.eventTarget.DispatchEvent(&event.Event)
+}
+
+// HasInputListeners returns true if there are input event listeners.
+func (b *Box) HasInputListeners() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.eventTarget == nil {
+		return false
+	}
+	return b.eventTarget.HasEventListeners(js.EventInput)
 }
 
 // GetWidth returns the computed width of the content area.
