@@ -452,7 +452,7 @@ func TestParser_InvalidCSS(t *testing.T) {
 		strings.Repeat("a", 10000) + ": b;",
 	}
 	for _, input := range inputs {
-		t.Run(input[:min(len(input), 30)], func(t *testing.T) {
+		t.Run(input[:minInt(len(input), 30)], func(t *testing.T) {
 			defer func() {
 				if r := recover(); r != nil {
 					t.Errorf("panicked on %q: %v", input, r)
@@ -463,7 +463,7 @@ func TestParser_InvalidCSS(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

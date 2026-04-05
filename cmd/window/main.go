@@ -244,6 +244,7 @@ func (b *Browser) Update() error {
 		}
 
 		// Mouse wheel scrolling - track deltaX and deltaY for wheel event
+		mx, my := ebiten.CursorPosition()
 		wheelX, wheelY := ebiten.Wheel()
 		if wheelX != 0 || wheelY != 0 {
 			// Create and dispatch wheel event to target element
@@ -268,9 +269,6 @@ func (b *Browser) Update() error {
 				}
 			}
 		}
-
-		// Mouse click handling
-		mx, my := ebiten.CursorPosition()
 
 		// URL bar click detection
 		if my >= 0 && my < navBarHeight {

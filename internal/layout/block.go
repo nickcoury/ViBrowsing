@@ -654,11 +654,6 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 		lineHeightPx := lineHeight * fontSize
 		charWidth := fontSize * 0.6
 
-		// For vertical writing mode, text flows top-to-bottom or bottom-to-top
-		// and characters are rotated
-		isVerticalRL := writingMode == "vertical-rl"
-		isVerticalLR := writingMode == "vertical-lr"
-
 		x := ctx.X
 		startX := x
 		isPre := whiteSpace == "pre" || whiteSpace == "pre-wrap"

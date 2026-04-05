@@ -162,7 +162,11 @@ func Parse(sheet string) []Rule {
 			}
 			if strings.HasPrefix(atName, "property") {
 				// Parse @property custom property registration
-				prop := parseProperty(sheet, i)
+				// atName is like "property --name" so we need to skip "property" and any whitespace
+				// to find the --custom-property-name part
+				// j is position right after the last character of "property" (the space before --name)
+				// We need to pass the position of '@' to parseProperty, not propStart
+				prop := parseProperty(sheet, i) // i is position of '@'
 				if prop != nil {
 					registeredProperties[prop.Name] = *prop
 				}
@@ -297,18 +301,31 @@ func parseProperty(sheet string, start int) *RegisteredProperty {
 	for j < len(sheet) && (sheet[j] == ' ' || sheet[j] == '\t') {
 		j++
 	}
-	if j+2 >= len(sheet) || sheet[j] != '-' || sheet[j+1] != '-' {
+	// Skip the word "property" (might be just "@property" or "@property ")
+	for j < len(sheet) && ((sheet[j] >= 'a' && sheet[j] <= 'z') || (sheet[j] >= 'A' && sheet[j] <= 'Z')) {
+		j++
+	}
+	// Skip whitespace before --
+	for j < len(sheet) && (sheet[j] == ' ' || sheet[j] == '\t') {
+		j++
+	}
+	// Now we should be at '--' for custom property
+	if j+1 >= len(sheet) || sheet[j] != '-' || sheet[j+1] != '-' {
 		return nil
 	}
-	j += 2 // skip '--'
+	nameStart := j // Include the dashes in the property name
+	j += 2         // skip '--'
 
 	// Read the property name until whitespace or brace
-	nameStart := j
 	for j < len(sheet) && sheet[j] != ' ' && sheet[j] != '\t' && sheet[j] != '{' && sheet[j] != ';' {
 		j++
 	}
 	propName := sheet[nameStart:j]
 	propName = strings.TrimSpace(propName)
+	// Must have actual name after --
+	if propName == "--" {
+		return nil
+	}
 	if propName == "" || !strings.HasPrefix(propName, "--") {
 		return nil
 	}
@@ -328,21 +345,27 @@ func parseProperty(sheet string, start int) *RegisteredProperty {
 		Name: propName,
 	}
 
+	// Track which required descriptors we found
+	var hasSyntax, hasInherits, hasInitialValue bool
+
 	// Extract syntax, inherits, and initial-value from declarations
 	for _, d := range decls {
 		propLower := strings.ToLower(d.Property)
 		switch propLower {
 		case "syntax":
 			prop.Syntax = strings.Trim(d.Value, "'\"")
+			hasSyntax = true
 		case "inherits":
 			prop.Inherits = strings.ToLower(d.Value) == "true"
+			hasInherits = true
 		case "initial-value":
 			prop.InitialValue = strings.Trim(d.Value, "'\"")
+			hasInitialValue = true
 		}
 	}
 
-	// Validate required fields
-	if prop.Syntax == "" || prop.InitialValue == "" {
+	// Validate all required fields are present
+	if !hasSyntax || !hasInherits || !hasInitialValue {
 		return nil
 	}
 

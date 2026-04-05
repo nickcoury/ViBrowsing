@@ -1831,3 +1831,99 @@ func splitFunctionParts(inner string) []string {
 	}
 	return parts
 }
+
+// ParseColorMix parses a CSS color-mix() function.
+// Format: color-mix(in <color-space>, <color> <percentage>, <color> <percentage>)
+// Example: color-mix(in srgb, red 50%, blue 50%)
+func ParseColorMix(s string) Color {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "color-mix(") || len(s) < 12 {
+		return Color{}
+	}
+	// Extract inner content
+	inner := s[10 : len(s)-1] // Remove "color-mix(" and ")"
+	parts := splitFunctionParts(inner)
+	if len(parts) < 3 {
+		return Color{}
+	}
+
+	// Parse color space (first part after "in")
+	colors := []string{}
+	percentages := []float64{}
+
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "in ") {
+			continue // color space handled, we default to srgb
+		}
+		// Check if part contains a percentage
+		if strings.Contains(part, " ") {
+			// Format: "color percentage"
+			spaceIdx := strings.LastIndex(part, " ")
+			colorStr := strings.TrimSpace(part[:spaceIdx])
+			percentStr := strings.TrimSpace(part[spaceIdx:])
+			if strings.HasSuffix(percentStr, "%") {
+				if pct, err := strconv.ParseFloat(strings.TrimSuffix(percentStr, "%"), 64); err == nil {
+					colors = append(colors, colorStr)
+					percentages = append(percentages, pct/100.0)
+				}
+			}
+		} else if i == len(parts)-1 && strings.HasSuffix(part, "%") {
+			// Last item is percentage for previous color
+			if pct, err := strconv.ParseFloat(strings.TrimSuffix(part, "%"), 64); err == nil {
+				percentages = append(percentages, pct/100.0)
+			}
+		}
+	}
+
+	// Mix the colors
+	if len(colors) < 2 {
+		return Color{}
+	}
+
+	c1 := ParseColor(colors[0])
+	c2 := ParseColor(colors[1])
+
+	w1, w2 := 0.5, 0.5
+	if len(percentages) >= 1 {
+		w1 = percentages[0]
+	}
+	if len(percentages) >= 2 {
+		w2 = percentages[1]
+	}
+
+	// Normalize weights
+	total := w1 + w2
+	if total > 0 {
+		w1 /= total
+		w2 /= total
+	}
+
+	// Mix in sRGB
+	r := uint8(float64(c1.R)*w1 + float64(c2.R)*w2)
+	g := uint8(float64(c1.G)*w1 + float64(c2.G)*w2)
+	b := uint8(float64(c1.B)*w1 + float64(c2.B)*w2)
+	a := uint8(float64(c1.A)*w1 + float64(c2.A)*w2)
+
+	return Color{R: r, G: g, B: b, A: a}
+}
+
+// ParseLightDark parses a CSS light-dark() function.
+// Format: light-dark(<color>, <color>)
+// Returns first color in light mode, second in dark mode.
+// For now, we return the first color (light mode) since we don't have dark mode detection.
+func ParseLightDark(s string) Color {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "light-dark(") || len(s) < 13 {
+		return Color{}
+	}
+	// Extract inner content
+	inner := s[12 : len(s)-1] // Remove "light-dark(" and ")"
+	parts := splitFunctionParts(inner)
+	if len(parts) < 2 {
+		return Color{}
+	}
+
+	// Return first color (light mode)
+	return ParseColor(parts[0])
+}

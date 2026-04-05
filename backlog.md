@@ -1386,10 +1386,113 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟠 Low (CSS Functions)
 
-- [ ] **Implement `color-mix()` function** — Mix two colors together using specified color space (e.g., color-mix(in srgb, red, blue))
-- [ ] **Implement `light-dark()` function** — light-dark(color1, color2) for automatic light/dark mode color selection
+- [x] ~~Implement `color-mix()` function~~ (2026-04-05 sprint) — ParseColorMix function mixes two colors using sRGB color space
+- [x] ~~Implement `light-dark()` function~~ (2026-04-05 sprint) — ParseLightDark function returns first color (light mode)
 - [ ] **Implement `OKLCH` color notation** — OKLCH color space support for modern CSS colors (oklch(), oklab())
 - [ ] **Implement `hwb()` color notation** — HWB (Hue, Whiteness, Blackness) color notation
+
+### 🟠 Low (Networking)
+
+- [x] ~~Implement `Accept-Language` header~~ (2026-04-05 sprint) — SetNavigatorLanguage and getNavigatorLanguage; sends navigator.language as Accept-Language header
+- [ ] **Implement HTTP/2 support** — Upgrade to HTTP/2 for multiplexed requests on a single connection
+
+### 🟠 Low (HTML Elements)
+
+- [x] ~~Implement `<video>` element visual rendering~~ (2026-04-05 sprint) — DrawMedia renders video player frame with controls UI
+- [x] ~~Implement `<audio>` element visual~~ (2026-04-05 sprint) — DrawMedia renders audio player controls UI
+- [x] ~~Implement `<thead>`, `<tbody>`, `<tfoot>` table sections~~ (2026-04-05 sprint) — TableSectionBox type handles table sections
+
+### 🟠 Low (Events)
+
+- [x] ~~Implement `change` event~~ (2026-04-05 sprint) — ChangeEvent struct with NewChangeEvent constructor
+- [x] ~~Implement `beforeinput` event~~ (2026-04-05 sprint) — InputEvent struct with NewInputEvent for beforeinput/input events
+- [x] ~~Implement `drag` and `drop` events~~ (2026-04-05 sprint) — DragEvent struct with NewDragEvent for dragstart/drag/dragenter/dragover/dragleave/drop/dragend
+
+### 🟠 Low (Internationalization)
+
+- [x] ~~Implement `lang` attribute inheritance~~ (2026-04-05 sprint) — lang attribute cascading via GetLangFromAncestors
+
+---
+
+## 🆕 New Items (2026-04-05 Sprint 3)
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew(), matrix() 2D transforms to elements during rendering
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems; inline boxes stack vertically
+- [ ] **Implement CSS `hyphens: auto/manual`** — Automatic hyphenation using soft hyphen character (U+00AD)
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement `background-blend-mode` drawing** — Apply blend mode when drawing multiple background layers
+- [ ] **Implement `mix-blend-mode` on positioned elements** — Apply blend when positioned elements overlap
+- [ ] **Implement CSS `opacity` per draw call** — Apply alpha blending per element not just whole box
+- [ ] **Implement CSS `break-inside: avoid/avoid-page/avoid-column`** — Prevent breaks inside elements
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `getComputedStyle()` fully** — Return all CSS property values as they resolve for an element
+- [ ] **Implement `innerText` fully** — Return CSS-aware rendered text content that respects display and visibility
+- [ ] **Implement `MutationObserver`** — JavaScript API to observe DOM changes (attributes, childList, subtree)
+
+### 🟢 Medium (Content & Rendering)
+
+- [ ] **Implement `<abbr>` element with title tooltip** — Abbreviation with dotted underline and title tooltip on hover
+- [ ] **Implement CSS `clip-path: polygon()` drawing** — Fill polygons for clip-path masking shapes
+- [ ] **Implement emoji rendering via fontconfig** — Use fontconfig to find and load color emoji fonts
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page and highlight matches
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab options on right-click
+- [ ] **Implement `window.print()`** — Trigger print dialog with current page content
+
+### 🟠 Low (Platform)
+
+- [ ] **Implement `@media print` styles** — Apply print-specific stylesheet rules; hide navigation, expand hidden sections
+- [ ] **Implement headless mode** — Generate screenshots without GUI display for CI/testing
+
+### 🟠 Low (Performance)
+
+- [ ] **Text measurement caching** — Cache Ebitengine font.MeasureString results per font/size/style combination
+- [ ] **CSS selector caching** — Cache selector match results for unchanged DOM/subtree; invalidate on DOM mutations
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
+- [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory usage stays under 500MB
+
+### 🟠 Low (Advanced CSS)
+
+- [ ] **Implement CSS `calc()` evaluation in all property contexts** — width, height, margin, padding, font-size, etc.
+- [ ] **Implement CSS `clamp()` function** — width: clamp(100px, 50%, 300px) clamping values
+- [ ] **Implement CSS `min()` and `max()` functions** — width: min(100px, 50%)
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-repeat: space/round` drawing** — Tile backgrounds with spacing or scaling
+- [ ] **Implement `background-position` (percentages) drawing** — Offset background image by percentage
+
+### 🟠 Low (Events)
+
+- [ ] **Implement `input` event** — Fire input event when input value changes in real-time during typing
+- [ ] **Implement `focus` and `blur` events** — Fire when element gains or loses focus
+
+### 🟠 Low (HTML Elements)
+
+- [ ] **Implement `<template>` rendering** — Parse template content into inert DOM but don't render until JS activates it
+- [ ] **Implement `<slot>` and shadow DOM** — Basic slot projection for web component support
+
+### 🟠 Low (CSS Text & Typography)
+
+- [ ] **Implement CSS `tab-size`** — Tab character rendering width
+- [ ] **Implement CSS `quotes`** — Custom quote characters for `<q>` elements
+- [ ] **Implement CSS `text-decoration-thickness`** — Thickness of text decoration lines
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement `Content-Encoding: br` (brotli)** — Support brotli decompression in addition to gzip/deflate
 
 ---
 

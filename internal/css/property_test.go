@@ -106,7 +106,7 @@ func TestParseProperty_Invalid(t *testing.T) {
 	}
 
 	for _, input := range invalidInputs {
-		t.Run(input[:min(len(input), 30)], func(t *testing.T) {
+		t.Run(input[:minIntProp(len(input), 30)], func(t *testing.T) {
 			registeredProperties = make(map[string]RegisteredProperty)
 			Parse(input)
 			if len(registeredProperties) > 0 {
@@ -239,7 +239,7 @@ func TestGetPropertyValue_EmptyProps(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
+func minIntProp(a, b int) int {
 	if a < b {
 		return a
 	}

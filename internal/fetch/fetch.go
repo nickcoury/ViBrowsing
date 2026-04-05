@@ -12,6 +12,22 @@ import (
 	"time"
 )
 
+// navigatorLanguage holds the current navigator.language value.
+// It can be set via SetNavigatorLanguage for testing or platform-specific defaults.
+var navigatorLanguage = "en-US"
+
+// SetNavigatorLanguage sets the navigator.language value used in Accept-Language headers.
+func SetNavigatorLanguage(lang string) {
+	if lang != "" {
+		navigatorLanguage = lang
+	}
+}
+
+// getNavigatorLanguage returns the current navigator.language value.
+func getNavigatorLanguage() string {
+	return navigatorLanguage
+}
+
 // MaxDocumentSize is the maximum document size (10MB) that can be fetched.
 // Documents larger than this will cause a FetchError with Reason "document too large".
 const MaxDocumentSize = 10 * 1024 * 1024
@@ -228,13 +244,21 @@ func Fetch(rawURL string, userAgent string, timeoutSecs int, cookieJar *CookieJa
 		}
 		req.Header.Set("User-Agent", ua)
 
-		// Set Accept-Encoding header
-		req.Header.Set("Accept-Encoding", compression.GetAcceptEncodingHeader())
+	// Set Accept-Encoding header
+	req.Header.Set("Accept-Encoding", compression.GetAcceptEncodingHeader())
 
-		// Add cookies if cookieJar is provided
-		if cookieJar != nil {
-			if cookieStr := cookieJar.GetCookies(currentURL); cookieStr != "" {
-				req.Header.Set("Cookie", cookieStr)
+	// Set Accept-Language header based on navigator.language
+	// Default to en-US if no language is set
+	acceptLanguage := "en-US"
+	if lang := getNavigatorLanguage(); lang != "" {
+		acceptLanguage = lang
+	}
+	req.Header.Set("Accept-Language", acceptLanguage)
+
+	// Add cookies if cookieJar is provided
+	if cookieJar != nil {
+		if cookieStr := cookieJar.GetCookies(currentURL); cookieStr != "" {
+			req.Header.Set("Cookie", cookieStr)
 			}
 		}
 
