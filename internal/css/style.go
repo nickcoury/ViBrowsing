@@ -144,6 +144,11 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"contain":             "none",
 		"mix-blend-mode":      "normal",
 		"hanging-punctuation": "none",
+		"font-stretch":         "normal",
+		"transform-box":        "view-box",
+		"place-items":         "normal",
+		"place-self":          "normal",
+		"user-select":        "auto",
 	}
 
 	// Element-specific default styles (HTML5 user agent defaults)
@@ -382,6 +387,11 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"contain":             "none",
 		"mix-blend-mode":      "normal",
 		"hanging-punctuation": "none",
+		"font-stretch":         "normal",
+		"transform-box":        "view-box",
+		"place-items":         "normal",
+		"place-self":          "normal",
+		"user-select":        "auto",
 	}
 
 	// Element-specific defaults
@@ -1518,8 +1528,6 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["unicode-bidi"] = value
 	case "direction":
 		props["direction"] = value
-	case "aspect-ratio":
-		props["aspect-ratio"] = value
 	case "writing-mode":
 		props["writing-mode"] = value
 	case "tab-size":

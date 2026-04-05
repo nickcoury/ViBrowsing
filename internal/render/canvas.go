@@ -46,6 +46,353 @@ func NewCanvas(width, height int) *Canvas {
 	}
 }
 
+// InnerWidth returns the viewport width (window.innerWidth equivalent).
+func (c *Canvas) InnerWidth() int {
+	return c.Width
+}
+
+// InnerHeight returns the viewport height (window.innerHeight equivalent).
+func (c *Canvas) InnerHeight() int {
+	return c.Height
+}
+
+// CursorType represents the cursor style for CSS cursor property.
+type CursorType string
+
+const (
+	CursorAuto       CursorType = "auto"
+	CursorDefault    CursorType = "default"
+	CursorPointer    CursorType = "pointer"
+	CursorText       CursorType = "text"
+	CursorWait       CursorType = "wait"
+	CursorCrosshair  CursorType = "crosshair"
+	CursorMove       CursorType = "move"
+	CursorHelp       CursorType = "help"
+	CursorNResize    CursorType = "n-resize"
+	CursorEResize    CursorType = "e-resize"
+	CursorSResize    CursorType = "s-resize"
+	CursorWResize    CursorType = "w-resize"
+	CursorNEResize   CursorType = "ne-resize"
+	CursorNWResize   CursorType = "nw-resize"
+	CursorSEResize   CursorType = "se-resize"
+	CursorSWResize   CursorType = "sw-resize"
+	CursorNotAllowed CursorType = "not-allowed"
+	CursorGrab       CursorType = "grab"
+	CursorGrabbing   CursorType = "grabbing"
+)
+
+// ParseCursor parses the CSS cursor property and returns a CursorType.
+func ParseCursor(cursorStr string) CursorType {
+	switch cursorStr {
+	case "auto":
+		return CursorAuto
+	case "default":
+		return CursorDefault
+	case "pointer":
+		return CursorPointer
+	case "text":
+		return CursorText
+	case "wait":
+		return CursorWait
+	case "crosshair":
+		return CursorCrosshair
+	case "move":
+		return CursorMove
+	case "help":
+		return CursorHelp
+	case "n-resize", "ns-resize":
+		return CursorNResize
+	case "e-resize", "ew-resize":
+		return CursorEResize
+	case "s-resize":
+		return CursorSResize
+	case "w-resize":
+		return CursorWResize
+	case "ne-resize", "nesw-resize":
+		return CursorNEResize
+	case "nw-resize", "nwse-resize":
+		return CursorNWResize
+	case "se-resize":
+		return CursorSEResize
+	case "sw-resize":
+		return CursorSWResize
+	case "not-allowed":
+		return CursorNotAllowed
+	case "grab":
+		return CursorGrab
+	case "grabbing":
+		return CursorGrabbing
+	default:
+		return CursorAuto
+	}
+}
+
+// DrawCursorIndicator draws a cursor indicator at the specified position.
+// The cursor style is determined by the element type and CSS cursor property.
+func (c *Canvas) DrawCursorIndicator(x, y int, cursorStr string, elementType string) {
+	cursor := ParseCursor(cursorStr)
+
+	// Determine actual cursor based on element type if cursor is auto
+	if cursor == CursorAuto {
+		switch elementType {
+		case "a", "button", "input", "select", "textarea", "label":
+			cursor = CursorPointer
+		case "text", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li":
+			cursor = CursorText
+		default:
+			cursor = CursorDefault
+		}
+	}
+
+	// Don't draw cursor indicator for default/auto (no visible cursor)
+	if cursor == CursorAuto || cursor == CursorDefault {
+		return
+	}
+
+	color := css.Color{R: 0, G: 0, B: 0, A: 200}
+
+	switch cursor {
+	case CursorPointer:
+		// Draw a small pointing hand (triangle arrow)
+		// Arrow pointing up-left from cursor position
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+1, y, color)
+		c.SetPixel(x+2, y, color)
+		c.SetPixel(x, y+1, color)
+		c.SetPixel(x, y+2, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x, y+3, color)
+		c.SetPixel(x+3, y, color)
+
+	case CursorText:
+		// Draw a text cursor (vertical bar)
+		c.FillRect(x, y, 2, 16, color)
+
+	case CursorWait:
+		// Draw a busy/wait cursor (hourglass shape approximated)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+4, y, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x+3, y+1, color)
+		c.SetPixel(x+2, y+2, color)
+		c.SetPixel(x+1, y+3, color)
+		c.SetPixel(x+3, y+3, color)
+		c.SetPixel(x, y+4, color)
+		c.SetPixel(x+4, y+4, color)
+
+	case CursorCrosshair:
+		// Draw a crosshair
+		c.SetPixel(x+2, y, color)
+		c.SetPixel(x+2, y+1, color)
+		c.SetPixel(x+2, y+3, color)
+		c.SetPixel(x+2, y+4, color)
+		c.SetPixel(x, y+2, color)
+		c.SetPixel(x+1, y+2, color)
+		c.SetPixel(x+3, y+2, color)
+		c.SetPixel(x+4, y+2, color)
+
+	case CursorMove:
+		// Draw a move cursor (four-way arrow)
+		c.SetPixel(x+2, y, color)
+		c.SetPixel(x+2, y+4, color)
+		c.SetPixel(x, y+2, color)
+		c.SetPixel(x+4, y+2, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x+3, y+1, color)
+		c.SetPixel(x+1, y+3, color)
+		c.SetPixel(x+3, y+3, color)
+
+	case CursorHelp:
+		// Draw a help cursor (question mark)
+		c.SetPixel(x+1, y, color)
+		c.SetPixel(x+2, y+1, color)
+		c.SetPixel(x+2, y+2, color)
+		c.SetPixel(x+1, y+3, color)
+		c.SetPixel(x+2, y+4, color)
+		c.SetPixel(x+2, y+5, color)
+
+	case CursorNResize, CursorEResize, CursorSResize, CursorWResize:
+		// Draw resize cursors (arrows)
+		// N (up arrow)
+		c.SetPixel(x+2, y, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x+3, y+1, color)
+		c.SetPixel(x+2, y+2, color)
+		c.SetPixel(x+2, y+3, color)
+
+	case CursorNEResize:
+		// NE resize (arrow pointing up-right)
+		c.SetPixel(x+3, y, color)
+		c.SetPixel(x+2, y+1, color)
+		c.SetPixel(x+1, y+2, color)
+		c.SetPixel(x, y+3, color)
+		c.SetPixel(x+3, y+3, color)
+
+	case CursorNWResize:
+		// NW resize (arrow pointing up-left)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x+2, y+2, color)
+		c.SetPixel(x+3, y+3, color)
+
+	case CursorSEResize:
+		// SE resize (arrow pointing down-right)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+3, y+1, color)
+		c.SetPixel(x+2, y+2, color)
+		c.SetPixel(x+1, y+3, color)
+
+	case CursorSWResize:
+		// SW resize (arrow pointing down-left)
+		c.SetPixel(x+3, y, color)
+		c.SetPixel(x, y+1, color)
+		c.SetPixel(x+1, y+2, color)
+		c.SetPixel(x+2, y+3, color)
+
+	case CursorNotAllowed:
+		// Draw a not-allowed/crossed circle
+		c.SetPixel(x+2, y, color)
+		c.SetPixel(x, y+2, color)
+		c.SetPixel(x+4, y+2, color)
+		c.SetPixel(x+2, y+4, color)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+4, y, color)
+		c.SetPixel(x, y+4, color)
+		c.SetPixel(x+4, y+4, color)
+
+	case CursorGrab:
+		// Draw a grab cursor (open hand)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+3, y, color)
+		c.SetPixel(x+1, y+1, color)
+		c.SetPixel(x+2, y+1, color)
+		c.SetPixel(x+1, y+2, color)
+		c.SetPixel(x+2, y+2, color)
+
+	case CursorGrabbing:
+		// Draw a grabbing cursor (closed hand)
+		c.SetPixel(x, y, color)
+		c.SetPixel(x+3, y, color)
+		c.SetPixel(x, y+1, color)
+		c.SetPixel(x+3, y+1, color)
+		c.SetPixel(x+1, y+2, color)
+		c.SetPixel(x+2, y+2, color)
+	}
+}
+
+// GetCursorForElement returns the appropriate cursor string for an element.
+func GetCursorForElement(box *layout.Box) string {
+	// First check CSS cursor property
+	if cursor, ok := box.Style["cursor"]; ok && cursor != "" {
+		return cursor
+	}
+
+	// Fall back to element-based defaults
+	if box.Node != nil {
+		switch box.Node.TagName {
+		case "a":
+			return "pointer"
+		case "button", "input", "select", "textarea", "label":
+			return "pointer"
+		case "text", "p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "span":
+			return "text"
+		case "img":
+			return "pointer"
+		}
+	}
+
+	return "auto"
+}
+
+// ScrollTo scrolls to the given position. Supports both ScrollTo(x, y) and
+// ScrollTo({left, top, behavior}) syntax.
+func (c *Canvas) ScrollTo(x interface{}, yOpt ...interface{}) {
+	switch arg := x.(type) {
+	case float64:
+		// ScrollTo(x, y)
+		c.ScrollX = int(arg)
+		if len(yOpt) > 0 {
+			if y, ok := yOpt[0].(float64); ok {
+				c.ScrollY = int(y)
+			}
+		}
+	case int:
+		// ScrollTo(x, y) with int
+		c.ScrollX = arg
+		if len(yOpt) > 0 {
+			if y, ok := yOpt[0].(int); ok {
+				c.ScrollY = y
+			}
+		}
+	case map[string]interface{}:
+		// ScrollTo({left, top, behavior})
+		if left, ok := arg["left"].(float64); ok {
+			c.ScrollX = int(left)
+		} else if left, ok := arg["left"].(int); ok {
+			c.ScrollX = left
+		}
+		if top, ok := arg["top"].(float64); ok {
+			c.ScrollY = int(top)
+		} else if top, ok := arg["top"].(int); ok {
+			c.ScrollY = top
+		}
+		// behavior is ignored (no smooth scrolling in this renderer)
+	}
+	// Clamp to valid scroll range
+	c.clampScroll()
+}
+
+// ScrollBy scrolls by the given delta. Supports both ScrollBy(dx, dy) and
+// ScrollBy({left, top, behavior}) syntax.
+func (c *Canvas) ScrollBy(x interface{}, dyOpt ...interface{}) {
+	switch arg := x.(type) {
+	case float64:
+		// ScrollBy(dx, dy)
+		c.ScrollX += int(arg)
+		if len(dyOpt) > 0 {
+			if dy, ok := dyOpt[0].(float64); ok {
+				c.ScrollY += int(dy)
+			}
+		}
+	case int:
+		// ScrollBy(dx, dy) with int
+		c.ScrollX += arg
+		if len(dyOpt) > 0 {
+			if dy, ok := dyOpt[0].(int); ok {
+				c.ScrollY += dy
+			}
+		}
+	case map[string]interface{}:
+		// ScrollBy({left, top, behavior})
+		if left, ok := arg["left"].(float64); ok {
+			c.ScrollX += int(left)
+		} else if left, ok := arg["left"].(int); ok {
+			c.ScrollX += left
+		}
+		if top, ok := arg["top"].(float64); ok {
+			c.ScrollY += int(top)
+		} else if top, ok := arg["top"].(int); ok {
+			c.ScrollY += top
+		}
+	}
+	// Clamp to valid scroll range
+	c.clampScroll()
+}
+
+// clampScroll ensures scroll position stays within valid bounds.
+func (c *Canvas) clampScroll() {
+	maxScrollY := 0
+	if c.PageHeight > c.Height {
+		maxScrollY = c.PageHeight - c.Height
+	}
+	if c.ScrollY < 0 {
+		c.ScrollY = 0
+	}
+	if c.ScrollY > maxScrollY {
+		c.ScrollY = maxScrollY
+	}
+}
+
 // Clear fills the canvas with white.
 func (c *Canvas) Clear() {
 	white := color.RGBA{255, 255, 255, 255}
@@ -492,6 +839,16 @@ func (c *Canvas) DrawBox(box *layout.Box) {
 	// Dialog element
 	if !isHidden && box.Type == layout.DialogBox && box.Node != nil {
 		c.DrawDialog(box)
+	}
+
+	// Fieldset element
+	if !isHidden && box.Type == layout.FieldsetBox && box.Node != nil {
+		c.DrawFieldset(box)
+	}
+
+	// Legend element
+	if !isHidden && box.Type == layout.LegendBox && box.Node != nil {
+		c.DrawLegend(box)
 	}
 
 	// Children (only if not hidden)
@@ -1100,7 +1457,7 @@ func (c *Canvas) loadImage(src string) (image.Image, error) {
 // loadBackgroundImage fetches and decodes a background image URL.
 // Returns the image or nil if loading failed.
 func (c *Canvas) loadBackgroundImage(url string) image.Image {
-	resp, err := fetch.Fetch(url, "", 30)
+	resp, err := fetch.Fetch(url, "", 30, nil)
 	if err != nil || resp == nil || resp.StatusCode != 200 {
 		return nil
 	}
@@ -2566,4 +2923,102 @@ func splitShadowParts(shadow string) []string {
 		parts = []string{shadow}
 	}
 	return parts
+}
+
+// DrawFieldset renders a <fieldset> element with a border.
+// Fieldset draws a border around its content, with the legend positioned
+// at the top-left corner overlapping the border.
+func (c *Canvas) DrawFieldset(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 400
+	}
+	if h <= 0 {
+		h = 100
+	}
+
+	// Draw fieldset border
+	borderColor := css.ParseColor(box.Style["border-color"])
+	if borderColor.A == 0 {
+		borderColor = css.Color{R: 128, G: 128, B: 128, A: 255}
+	}
+	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
+	if borderWidth == 0 {
+		borderWidth = 2
+	}
+
+	// Background
+	bgColor := css.ParseColor(box.Style["background"])
+	if bgColor.A == 0 {
+		bgColor = css.Color{R: 255, G: 255, B: 255, A: 255}
+	}
+	c.FillRect(x, y, w, h, bgColor)
+
+	// Draw border around fieldset
+	c.DrawBorder(x, y, w, h, borderWidth, borderColor)
+
+	// Find and position legend
+	for _, child := range box.Children {
+		if child.Type == layout.LegendBox {
+			// Legend is positioned at top-left, overlapping the border
+			// Adjust legend position to sit on the top border
+			legendH := int(child.ContentH)
+			child.ContentY = float64(y - legendH/2)
+			if child.ContentY < float64(y) {
+				child.ContentY = float64(y)
+			}
+		}
+	}
+}
+
+// DrawLegend renders a <legend> element.
+// Legend is rendered as a block-level element with padding and a background.
+func (c *Canvas) DrawLegend(box *layout.Box) {
+	x := int(box.ContentX)
+	y := int(box.ContentY)
+	w := int(box.ContentW)
+	h := int(box.ContentH)
+
+	if w <= 0 {
+		w = 100
+	}
+	if h <= 0 {
+		h = 24
+	}
+
+	// Background for legend
+	bgColor := css.ParseColor(box.Style["background"])
+	if bgColor.A == 0 {
+		bgColor = css.Color{R: 240, G: 240, B: 240, A: 255}
+	}
+
+	// Padding
+	paddingLeft := int(css.ParseLength(box.Style["padding-left"]).Value)
+	paddingRight := int(css.ParseLength(box.Style["padding-right"]).Value)
+	paddingTop := int(css.ParseLength(box.Style["padding-top"]).Value)
+	paddingBottom := int(css.ParseLength(box.Style["padding-bottom"]).Value)
+
+	// Border
+	borderColor := css.ParseColor(box.Style["border-color"])
+	if borderColor.A == 0 {
+		borderColor = css.Color{R: 128, G: 128, B: 128, A: 255}
+	}
+	borderWidth := int(css.ParseLength(box.Style["border-width"]).Value)
+
+	// Draw legend background
+	legendX := x - paddingLeft
+	legendY := y - paddingTop/2
+	legendW := w + paddingLeft + paddingRight
+	legendH := h + paddingTop + paddingBottom
+
+	c.FillRect(legendX, legendY, legendW, legendH, bgColor)
+
+	// Draw legend border
+	if borderWidth > 0 {
+		c.DrawBorder(legendX, legendY, legendW, legendH, borderWidth, borderColor)
+	}
 }

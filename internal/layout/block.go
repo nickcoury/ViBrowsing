@@ -39,7 +39,12 @@ func LayoutBlock(root *Box, containingWidth float64) {
 		FontSize:        16,
 	}
 
+	// DEBUG
+	fmt.Printf("DEBUG LayoutBlock START: root=%s ctx.Y=%.1f ctx.FontSize=%.1f\n", root.Node.TagName, ctx.Y, ctx.FontSize)
+
 	layoutChildren(root, ctx)
+
+	fmt.Printf("DEBUG LayoutBlock END: root=%s ctx.Y=%.1f root.ContentY=%.1f root.ContentH=%.1f\n", root.Node.TagName, ctx.Y, root.ContentY, root.ContentH)
 
 	// Set root dimensions after laying out children
 	// For the root (body), ContentW is the containing width and ContentH is the total height
@@ -126,7 +131,9 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			// Reset X cursor to content area edge for block children
 			// Inline content may have advanced ctx.X past the content area
 			ctx.X = box.ContentX
+			fmt.Printf("DEBUG layoutChildren BLOCK: child=%s before layoutBlockChild ctx.Y=%.1f\n", child.Node.TagName, ctx.Y)
 			layoutBlockChild(child, ctx)
+			fmt.Printf("DEBUG layoutChildren BLOCK: child=%s after layoutBlockChild ctx.Y=%.1f\n", child.Node.TagName, ctx.Y)
 		case FlexBox:
 			applyVerticalAlignments(ctx)
 			ctx.LineBoxBaseline = 0
@@ -169,7 +176,15 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			layoutTableCell(child, ctx)
 		case InlineBox, TextBox:
 			prevY := ctx.Y
+			dataPreview := child.Node.Data
+			if len(dataPreview) > 15 {
+				dataPreview = dataPreview[:15] + "..."
+			}
+			fmt.Printf("DEBUG InlineBox BEFORE: data=%q tag=%s box.Type=%d parent=%s ctx.Y=%.1f LineBoxStartY=%.1f\n",
+				dataPreview, child.Node.TagName, child.Type, box.Node.TagName, ctx.Y, ctx.LineBoxStartY)
 			layoutInlineChild(child, box, ctx)
+			fmt.Printf("DEBUG InlineBox AFTER: data=%q ContentY=%.1f ContentH=%.1f ctx.Y=%.1f LineBoxStartY=%.1f\n",
+				dataPreview, child.ContentY, child.ContentH, ctx.Y, ctx.LineBoxStartY)
 			// Check if we wrapped to a new line
 			if ctx.Y > prevY {
 				// New line started — flush previous line box
@@ -194,6 +209,15 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 				ctx.LineBoxStartY = ctx.Y
 				ctx.LineBoxChildren = nil
 			}
+		case FieldsetBox:
+			// Fieldset: flush line box before fieldset child
+			applyVerticalAlignments(ctx)
+			ctx.LineBoxBaseline = 0
+			ctx.LineBoxMaxAscent = 0
+			ctx.LineBoxMaxDescent = 0
+			ctx.LineBoxStartY = ctx.Y
+			ctx.LineBoxChildren = nil
+			layoutFieldset(child, ctx)
 		}
 	}
 	// Flush any remaining line box
@@ -310,12 +334,17 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	if ctx.FontSize > 0 {
 		parentFontSize = ctx.FontSize
 	}
-	if marginTop > 0 && css.ParseLength(box.Style["margin-top"]).Unit == css.UnitEm {
+	unitTop := css.ParseLength(box.Style["margin-top"]).Unit
+	unitBottom := css.ParseLength(box.Style["margin-bottom"]).Unit
+	if marginTop > 0 && unitTop == css.UnitEm {
 		marginTop = marginTop * parentFontSize
 	}
-	if marginBottom > 0 && css.ParseLength(box.Style["margin-bottom"]).Unit == css.UnitEm {
+	if marginBottom > 0 && unitBottom == css.UnitEm {
 		marginBottom = marginBottom * parentFontSize
 	}
+
+	fmt.Printf("DEBUG layoutBlockChild: box=%s marginTop=%.1f(%.0f) marginBottom=%.1f ctx.Y=%.1f parentFontSize=%.1f\n",
+		box.Node.TagName, marginTop, css.ParseLength(box.Style["margin-top"]).Value, marginBottom, ctx.Y, parentFontSize)
 
 	// Compute y position: start at FloatBottom if we're below floats
 	// (ctx.Y might be below floats already, or at original cursor)
@@ -353,10 +382,6 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 		FloatRightEdge: ctx.FloatRightEdge,
 		FloatBottom:   ctx.FloatBottom,
 	}
-	// DEBUG: trace ctx.Y for h1 and div
-	if box.Node != nil && (box.Node.TagName == "h1" || box.Node.TagName == "div") {
-		fmt.Printf("DEBUG [%s] ENTRY: ctx.Y=%.1f marginTop=%.1f\n", box.Node.TagName, ctx.Y, marginTop)
-	}
 	layoutChildren(box, childCtx)
 
 	// Content height = position of last child
@@ -368,6 +393,8 @@ func layoutBlockChild(box *Box, ctx *LayoutContext) {
 	if ctx.FloatBottom > nextY {
 		nextY = ctx.FloatBottom
 	}
+	fmt.Printf("DEBUG layoutBlockChild END: box=%s ContentY=%.1f ContentH=%.1f marginBottom=%.1f nextY=%.1f -> ctx.Y=%.1f\n",
+		box.Node.TagName, box.ContentY, box.ContentH, marginBottom, nextY, nextY)
 	ctx.Y = nextY
 
 	// Clear floats after a block that was pushed below them
@@ -535,24 +562,24 @@ func layoutInlineChild(box *Box, parent *Box, ctx *LayoutContext) {
 			}
 		}
 
-		// Set box to cover the entire text range
-		box.ContentX = startX
-		box.ContentY = ctx.LineBoxStartY
-		box.ContentW = x - startX
-		if box.ContentW < charWidth {
-			box.ContentW = charWidth
-		}
-		box.ContentH = lineHeightPx
+	// Set box to cover the entire text range
+	box.ContentX = startX
+	box.ContentY = ctx.LineBoxStartY
+	box.ContentW = x - startX
+	if box.ContentW < charWidth {
+		box.ContentW = charWidth
+	}
+	box.ContentH = lineHeightPx
 
-		// Track line box metrics
-		if box.ContentH > ctx.LineBoxMaxAscent+ctx.LineBoxMaxDescent {
-			// New total line height — adjust
-			extra := box.ContentH - (ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent)
-			ctx.LineBoxMaxDescent += extra
-		}
+	// Track line box metrics
+	if box.ContentH > ctx.LineBoxMaxAscent+ctx.LineBoxMaxDescent {
+		// New total line height — adjust
+		extra := box.ContentH - (ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent)
+		ctx.LineBoxMaxDescent += extra
+	}
 
-		// Add to line box
-		ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
+	// Add to line box
+	ctx.LineBoxChildren = append(ctx.LineBoxChildren, box)
 
 		// Advance cursor past the text
 		if x > ctx.X {
@@ -1439,7 +1466,6 @@ func layoutTableCell(box *Box, ctx *LayoutContext) {
 func layoutMultiColumn(box *Box, ctx *LayoutContext, columnCount int, columnWidth float64, columnGap float64) {
 	width := computeWidth(box, ctx.Width)
 	marginTop := css.ParseLength(box.Style["margin-top"]).Value
-	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
 
 	box.ContentX = ctx.X + css.ParseLength(box.Style["margin-left"]).Value
 	box.ContentY = ctx.Y + marginTop
@@ -1560,11 +1586,75 @@ func layoutMultiColumn(box *Box, ctx *LayoutContext, columnCount int, columnWidt
 
 	// Note: columns are not stored in box.Children to avoid double-layout
 	// The column information is stored for rendering in a special style property
-	box.Style["_columnCount"] = strconv.Itoa(actualCount)
-	box.Style["_columnWidth"] = strconv.FormatFloat(actualColWidth, 'f', 2, 64)
-	box.Style["_columnGap"] = strconv.FormatFloat(columnGap, 'f', 2, 64)
+}
+
+// layoutFieldset handles layout for a fieldset element.
+// Fieldset creates a box with a legend positioned at the top-left corner,
+// and the rest of the content flowing below.
+func layoutFieldset(box *Box, ctx *LayoutContext) {
+	width := computeWidth(box, ctx.Width)
+	marginTop := css.ParseLength(box.Style["margin-top"]).Value
+	marginBottom := css.ParseLength(box.Style["margin-bottom"]).Value
+	marginLeft := css.ParseLength(box.Style["margin-left"]).Value
+
+	box.ContentX = ctx.X + marginLeft
+	box.ContentY = ctx.Y + marginTop
+	box.ContentW = width
+
+	// Find legend (if any) among children
+	var legend *Box
+	var otherChildren []*Box
+	for _, child := range box.Children {
+		if child.Type == LegendBox {
+			legend = child
+		} else {
+			otherChildren = append(otherChildren, child)
+		}
+	}
+
+	legendHeight := 0.0
+
+	// Layout legend if present
+	if legend != nil {
+		legendCtx := &LayoutContext{
+			Width: width,
+			X:     box.ContentX,
+			Y:     box.ContentY,
+		}
+		layoutBlockChild(legend, legendCtx)
+		legendHeight = legend.ContentH + legend.MarginTop.Value + legend.MarginBottom.Value
+		// Legend is positioned at top-left, slightly overlapping the fieldset border
+		legend.ContentX = box.ContentX
+		legend.ContentY = box.ContentY
+	}
+
+	// Layout remaining children below legend
+	contentY := box.ContentY + legendHeight
+	for _, child := range otherChildren {
+		childCtx := &LayoutContext{
+			Width:         width,
+			X:             box.ContentX,
+			Y:             contentY,
+			FloatLeftEdge: ctx.FloatLeftEdge,
+			FloatRightEdge: ctx.FloatRightEdge,
+			FloatBottom:   ctx.FloatBottom,
+		}
+		layoutChild(child, box, childCtx)
+		contentY = childCtx.Y
+	}
+
+	// Content height is the max of legend height and children's extent
+	childrenHeight := 0.0
+	if len(otherChildren) > 0 {
+		childrenHeight = contentY - box.ContentY
+	}
+
+	box.ContentH = legendHeight + childrenHeight
 
 	// Advance cursor
 	nextY := box.ContentY + box.ContentH + marginBottom
 	ctx.Y = nextY
+
+	// Store fieldset dimensions for potential rendering use
+	box.Style["_fieldset_legend_height"] = strconv.FormatFloat(legendHeight, 'f', 2, 64)
 }

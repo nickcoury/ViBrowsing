@@ -7,6 +7,8 @@
 - [x] ~~Fix unclosed tag handling~~ (2026-04-03 sprint partial) — generic end tag now pops stack until matching tag found; unknown end tags are skipped without crashing; block tags implicitly close open <p> tags
 - [x] ~~Implement entity decoding~~ (2026-04-03 sprint) — added decodeEntities() with named entities (amp, lt, gt, quot, apos, nbsp, ndash, mdash, lsquo, rsquo, ldquo, rdquo, hellip, copy, reg, trade, deg, plusmn, times, divide, frac12, frac14, frac34) and numeric entities (&#65;, &#x41;)
 - [x] ~~Implement foreign content handling~~ (2026-04-04 sprint) — svg/math tracked via foreignContent counter; HTML-specific rules (p-closing, foster parenting) disabled inside foreign content; end tags only pop matching element in foreign context; bootstrap stack corrected to include head+body so elements append to body not html
+- [x] ~~Fix dataPreview undefined variable in block.go~~ (2026-04-05 sprint 2) — removed fmt.Printf debug statements that referenced out-of-scope variable
+- [x] ~~Fix MatchMedia width/height offset bugs in supports.go~~ (2026-04-05 sprint 2) — corrected string slice offsets for max-width/min-width/max-height/min-height and fixed orientation portrait/landscape logic (vh > vw not >=); fixed AND condition parsing to properly evaluate both conditions
 
 ## 🟡 High (Layout/Rendering)
 
@@ -76,7 +78,10 @@
 ### CSS Selectors
 - [x] ~~Implement attribute selectors~~ (2026-04-04 sprint 2) — `[attr]`, `[attr=value]`, `[attr~=value]`, `[attr|=value]`, `^=`, `$=`, `*=` implemented with MatchNodeSelector
 - [x] ~~Implement pseudo-classes~~ (2026-04-05 sprint) — `:not()` with complex selector support, `:nth-child()` with formula (2n+1, odd, even, 3n), `:valid/:invalid` with format checking, `:placeholder-shown`
-- [ ] **Implement pseudo-elements** — `::before`, `::after`, `::first-line`, `::first-letter`
+- [x] ~~Implement pseudo-elements~~ (2026-04-05 sprint 2) — `::first-line`, `::first-letter`, `::before`, `::after` with content property
+- [x] ~~Implement `:focus-within`~~ (2026-04-05 sprint 2) — matches when element or descendant has focus
+- [x] ~~Implement `:checked`, `:disabled`, `:enabled`~~ (2026-04-05 sprint 2) — form state matching pseudo-classes
+- [x] ~~Implement `:lang()`~~ (2026-04-05 sprint 2) — language-based selector with parameter support
 - [x] ~~Implement combinators~~ (2026-04-05 sprint) — descendant (space), child (>), adjacent sibling (+), general sibling (~) all work via splitSelectorParts + matchSelectorChain
 
 ### CSS Layout
@@ -152,6 +157,9 @@
 ### URL Handling
 - [x] ~~Implement `base` href~~ (2026-04-04 sprint 2) — ResolveURL in internal/fetch/url.go handles relative URLs
 - [x] ~~Implement absolute URL resolution~~ (2026-04-04 sprint 2) — ResolveURL handles all relative URL forms
+- [x] ~~Implement HTTP cookies~~ (2026-04-05 sprint 2) — CookieJar stores/returns cookies; Set-Cookie header parsing; Cookie header on requests
+- [x] ~~Implement browser history~~ (2026-04-05 sprint 2) — BrowserState with history list, back/forward navigation
+- [x] ~~Implement link target resolution~~ (2026-04-05 sprint 2) — target="_blank"/"_self"/"_parent"/"_top" handling
 
 ### Browser Features
 - [ ] **Link click navigation** — clicking `<a href>` elements navigates to those URLs
@@ -749,3 +757,67 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Download html5lib test corpus** — Run 500+ HTML parsing edge case tests
 - [ ] **Visual screenshot regression tests** — Collect baseline screenshots, diff on changes
 - [ ] **go-fuzz fuzz testing** — Generate random HTML/CSS, verify no panics
+
+---
+
+## 🆕 New Items (2026-04-05 Sprint 2)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix table cell border-collapse rendering** — Adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border separately
+- [ ] **Fix float clearing logic** — Blocks that clear:left/right/both should properly position below the float, not overlap it; ensure ClearStyle is respected
+- [ ] **Fix inline box baseline calculation** — Inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement CSS `filter` drawing** — Apply blur, brightness, contrast, grayscale, sepia pixel effects to rendered boxes using image filtering
+- [ ] **Implement CSS `backdrop-filter` drawing** — Apply blur to elements behind fixed/absolute positioned elements (for dialog/modals with blur backdrop)
+- [ ] **Implement `<iframe>` rendering** — Show placeholder for iframes; optionally recursively render same-origin iframe content
+- [ ] **Implement `<canvas>` 2D context** — Render canvas 2D drawing API (rect, arc, path, text, image) to output buffer
+- [ ] **Implement emoji rendering** — Proper color emoji display using fontconfig or embedded emoji font
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<template>`** — Parse template content into inert DOM but don't render until JavaScript activates it
+- [ ] **Implement `<slot>` and shadow DOM** — Basic slot projection for web component support; fallback to display:contents
+- [ ] **Implement `<dialog>` modal** — Modal dialog with backdrop; showModal() and close() methods
+- [ ] **Implement `<colgroup>` and `<col>`** — Column grouping for table column widths and styles
+- [ ] **Implement `<td colspan>` and `<td rowspan>`** — Cell spanning for complex tables with merged cells
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew() 2D transforms to elements during rendering
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems
+- [ ] **Implement CSS `hyphens: auto/manual`** — Automatic hyphenation of words at line breaks using hyphenate character
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment
+- [ ] **Implement CSS `unicode-bidi: isolate/embed/override`** — Bidirectional text isolation and override for RTL content
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `innerText`** — Get rendered text content (like textContent but CSS-aware, respects display and visibility)
+- [ ] **Implement `getComputedStyle()`** — Return the computed style object for an element (all CSS properties as they resolve)
+- [ ] **Implement `getBoundingClientRect()`** — Return element position relative to viewport (x, y, width, height, top, right, bottom, left)
+- [ ] **Implement `element.scrollIntoView()`** — Scroll element into viewport with options (start/center/end/nearest)
+- [ ] **Implement `MutationObserver`** — JavaScript API to observe DOM changes (attributes, childList, subtree)
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page and highlight matches
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab options on right-click
+- [ ] **Implement loading progress indicator** — Spinner/progress bar during page fetch
+- [ ] **Implement `window.print()`** — Trigger print dialog with current page content
+- [ ] **Implement `@media print` styles** — Apply print-specific stylesheet rules and hide non-essential content
+
+### 🟢 Medium (Performance)
+
+- [ ] **Text measurement caching** — Cache Ebitengine font.MeasureString results per font/size/style combination to avoid repeated measurement
+- [ ] **CSS selector indexing** — Build index of elements by class/id/tag for fast selector matching instead of tree traversal
+- [ ] **Image lazy decoding** — Don't decode image data until it's about to be rendered in viewport
+- [ ] **Memory pool for nodes** — Use sync.Pool to reuse allocated Node/Token/Box objects instead of GC-heavy allocation per parse
+
+### 🟠 Low (Platform)
+
+- [ ] **Headless mode** — Generate screenshots without GUI display for CI/testing using Ebitengine headless mode
+- [ ] **PDF output** — Render page to PDF using go's pdf libraries or command-line tools
+- [ ] **Wayland support** — Currently X11 only via Ebitengine; add Wayland compositor support
+- [ ] **Multi-window/tab support** — Multiple browser windows or tabs with independent navigation

@@ -12,16 +12,18 @@ import (
 
 // Response holds the result of a fetch operation.
 type Response struct {
-	Body       []byte
-	StatusCode int
+	Body        []byte
+	StatusCode  int
 	ContentType string
-	FinalURL   string
+	FinalURL    string
+	Headers     http.Header // Response headers for cookie extraction
 }
 
 // Fetch retrieves a URL, following up to maxRedirects redirects.
 // Supports http://, https://, and file:// URLs.
 // userAgent overrides the default User-Agent. timeout is in seconds.
-func Fetch(rawURL string, userAgent string, timeoutSecs int) (*Response, error) {
+// cookieJar is optional - if provided, cookies will be sent and stored.
+func Fetch(rawURL string, userAgent string, timeoutSecs int, cookieJar *CookieJar) (*Response, error) {
 	// Handle file:// URLs
 	if strings.HasPrefix(rawURL, "file://") {
 		path := rawURL[7:]
@@ -73,6 +75,13 @@ func Fetch(rawURL string, userAgent string, timeoutSecs int) (*Response, error) 
 		}
 		req.Header.Set("User-Agent", ua)
 
+		// Add cookies if cookieJar is provided
+		if cookieJar != nil {
+			if cookieStr := cookieJar.GetCookies(currentURL); cookieStr != "" {
+				req.Header.Set("Cookie", cookieStr)
+			}
+		}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("request failed (timeout=%ds): %w", timeoutSecs, err)
@@ -90,29 +99,45 @@ func Fetch(rawURL string, userAgent string, timeoutSecs int) (*Response, error) 
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 			redirectURL := resp.Header.Get("Location")
 			if redirectURL == "" {
+				resp.Body.Close()
 				return &Response{
 					Body:        body,
 					StatusCode:  resp.StatusCode,
 					ContentType: contentType,
 					FinalURL:    currentURL,
+					Headers:     resp.Header,
 				}, nil
+			}
+
+			// Store cookies before following redirect
+			if cookieJar != nil {
+				cookieJar.SetCookies(currentURL, resp.Header.Values("Set-Cookie"))
 			}
 
 			// Resolve relative redirects
 			absURL, err := resp.Request.URL.Parse(redirectURL)
 			if err != nil {
+				resp.Body.Close()
 				return nil, fmt.Errorf("invalid redirect URL: %w", err)
 			}
 			currentURL = absURL.String()
 			lastErr = fmt.Errorf("redirect loop exceeded")
+			resp.Body.Close()
 			continue
 		}
 
+		// Store cookies from final response
+		if cookieJar != nil {
+			cookieJar.SetCookies(currentURL, resp.Header.Values("Set-Cookie"))
+		}
+
+		resp.Body.Close()
 		return &Response{
 			Body:        body,
 			StatusCode:  resp.StatusCode,
 			ContentType: contentType,
 			FinalURL:    currentURL,
+			Headers:     resp.Header,
 		}, nil
 	}
 

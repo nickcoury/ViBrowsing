@@ -3,6 +3,7 @@ package layout
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/html"
@@ -43,6 +44,13 @@ const (
 	AbbrBox
 	MarkBox
 	ColumnBox // Multi-column layout column
+	DetailsBox
+	SummaryBox
+	PictureBox
+	FieldsetBox
+	LegendBox
+	MapBox
+	DataBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -73,6 +81,14 @@ type Box struct {
 	ColSpan    int // number of columns this cell spans (1 = normal)
 	RowSpan    int // number of rows this cell spans (1 = normal)
 	ColumnIndex int // column index for table cells
+
+	// Map-specific properties (for <map> and <area> elements)
+	MapName string // name attribute of the map element
+	AreaShape string // shape attribute of area: rect, circle, poly, default
+	AreaCoords []int // coordinates for area element shape
+
+	// Data element property
+	DataValue string // value attribute of <data> element
 }
 
 // GetWidth returns the computed width of the content area.
@@ -243,8 +259,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		"ul", "ol", "form", "pre",
 		"blockquote", "address", "article", "aside",
 		"footer", "header", "main", "nav", "section",
-		"figure", "figcaption", "noscript", "details",
-		"summary":
+		"figure", "figcaption", "noscript":
 		box.Type = BlockBox
 	case "table":
 		box.Type = TableBox
@@ -304,6 +319,17 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 			box.Style["text-decoration-line"] = "underline"
 			box.Style["text-decoration-style"] = "dotted"
 		}
+	case "details":
+		box.Type = DetailsBox
+	case "summary":
+		box.Type = SummaryBox
+	case "picture":
+		box.Type = PictureBox
+	case "fieldset":
+		box.Type = FieldsetBox
+	case "legend":
+		box.Type = LegendBox
+		// Legend is block-level by default
 	case "mark":
 		box.Type = MarkBox
 		// Default mark styling
@@ -315,6 +341,17 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 	case "del", "ins":
 		box.Type = InlineBox
 		// del/ins are inline by default (like u and s)
+	case "data":
+		box.Type = DataBox
+		// data element - machine-readable data wrapper with value attribute
+	case "map":
+		box.Type = MapBox
+		// map element - client-side image map (container for area elements)
+		// Maps are display: inline but define regions for use by img usemap
+	case "area":
+		box.Type = InlineBox
+		// area element - clickable region in image map
+		// areas are void elements that define shapes within a map
 	}
 
 	// Flex container
@@ -419,6 +456,62 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		}
 	}
 
+	// Handle picture element: select the best source based on viewport
+	if tagName == "picture" {
+		box = resolvePictureSource(box, 800) // default viewport width
+	}
+
+	// Handle details element: if open attribute is missing or "open", show children
+	// The summary is the first summary child; content is other children
+	if tagName == "details" {
+		isOpen := node.GetAttribute("open")
+		// If not open, we still include the summary but mark details as collapsed
+		// For now, just pass through - rendering can handle visibility
+		if isOpen == "" {
+			// Not open - mark that content should be hidden
+			box.Style["_details_open"] = "false"
+		} else {
+			box.Style["_details_open"] = "true"
+		}
+	}
+
+	// Handle abbr element: store title attribute for tooltip rendering
+	if tagName == "abbr" {
+		title := node.GetAttribute("title")
+		if title != "" {
+			box.Style["_abbr_title"] = title
+		}
+	}
+
+	// Handle map element: store name attribute for usemap reference
+	if tagName == "map" {
+		box.MapName = node.GetAttribute("name")
+	}
+
+	// Handle area element: parse shape and coords attributes for image map regions
+	if tagName == "area" {
+		box.AreaShape = strings.ToLower(node.GetAttribute("shape"))
+		if box.AreaShape == "" {
+			box.AreaShape = "rect" // default shape
+		}
+		// Parse coords attribute (comma or space separated integers)
+		coordsStr := node.GetAttribute("coords")
+		if coordsStr != "" {
+			coordsStr = strings.ReplaceAll(coordsStr, ",", " ")
+			parts := strings.Fields(coordsStr)
+			for _, part := range parts {
+				if coord, err := strconv.Atoi(part); err == nil {
+					box.AreaCoords = append(box.AreaCoords, coord)
+				}
+			}
+		}
+	}
+
+	// Handle data element: store value attribute for machine-readable data
+	if tagName == "data" {
+		box.DataValue = node.GetAttribute("value")
+	}
+
 	return box
 }
 
@@ -460,4 +553,202 @@ func (b *Box) stringWithIndent(indent int) string {
 	}
 
 	return s
+}
+
+// resolvePictureSource handles the <picture> element by selecting the best <source>
+// based on viewport width and media queries. Returns a modified box with a single
+// img child (or the original img if no picture sources apply).
+func resolvePictureSource(pictureBox *Box, viewportWidth float64) *Box {
+	if pictureBox == nil {
+		return pictureBox
+	}
+
+	// Find all source elements and the img element
+	var sources []*Box
+	var imgBox *Box
+
+	for _, child := range pictureBox.Children {
+		if child.Node != nil && child.Node.TagName == "source" {
+			sources = append(sources, child)
+		} else if child.Node != nil && child.Node.TagName == "img" {
+			imgBox = child
+		}
+	}
+
+	// If no img, return picture box as-is
+	if imgBox == nil {
+		return pictureBox
+	}
+
+	// Evaluate sources in order (first matching source wins)
+	selectedSrc := ""
+
+	for _, source := range sources {
+		srcset := source.Node.GetAttribute("srcset")
+		media := source.Node.GetAttribute("media")
+
+		// Check if media query matches viewport
+		if media != "" && !matchesMediaQuery(media, viewportWidth) {
+			continue
+		}
+
+		// This source matches - use its srcset
+		if srcset != "" {
+			selectedSrc = parseSrcset(srcset, viewportWidth)
+			break
+		}
+	}
+
+	// If no source matched, use img's src as fallback
+	if selectedSrc == "" {
+		selectedSrc = imgBox.Node.GetAttribute("src")
+	}
+
+	// Update the img element's src attribute in the DOM
+	if selectedSrc != "" {
+		imgBox.Node.SetAttribute("src", selectedSrc)
+	}
+
+	// Replace picture's children with just the img
+	pictureBox.Children = []*Box{imgBox}
+	imgBox.Parent = pictureBox
+
+	return pictureBox
+}
+
+// matchesMediaQuery checks if a media query string matches the given viewport width.
+func matchesMediaQuery(media string, viewportWidth float64) bool {
+	// Simple media query parser for common patterns
+	media = strings.ToLower(strings.TrimSpace(media))
+
+	// Handle min-width queries
+	if strings.Contains(media, "min-width") {
+		// Extract pixel value from e.g. "(min-width: 768px)"
+		start := strings.Index(media, "min-width")
+		if start >= 0 {
+			rest := media[start+9:] // skip "min-width"
+			rest = strings.TrimLeft(rest, ": ")
+			// Extract number
+			numStr := ""
+			for _, c := range rest {
+				if c >= '0' && c <= '9' {
+					numStr += string(c)
+				} else if c == 'p' { // end of "px"
+					break
+				}
+			}
+			if numStr != "" {
+				minW := 0
+				fmt.Sscanf(numStr, "%d", &minW)
+				return viewportWidth >= float64(minW)
+			}
+		}
+	}
+
+	// Handle max-width queries
+	if strings.Contains(media, "max-width") {
+		start := strings.Index(media, "max-width")
+		if start >= 0 {
+			rest := media[start+9:]
+			rest = strings.TrimLeft(rest, ": ")
+			numStr := ""
+			for _, c := range rest {
+				if c >= '0' && c <= '9' {
+					numStr += string(c)
+				} else if c == 'p' {
+					break
+				}
+			}
+			if numStr != "" {
+				maxW := 0
+				fmt.Sscanf(numStr, "%d", &maxW)
+				return viewportWidth <= float64(maxW)
+			}
+		}
+	}
+
+	// Default: matches
+	return true
+}
+
+// parseSrcset parses a srcset attribute value and returns the URL that best
+// matches the given viewport width. Format: "url1 100w, url2 200w, url3 300w"
+func parseSrcset(srcset string, viewportWidth float64) string {
+	if srcset == "" {
+		return ""
+	}
+
+	// Split by comma
+	parts := strings.Split(srcset, ",")
+	var candidates []struct {
+		url   string
+		width int
+	}
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Split to get url and descriptor
+		fields := strings.Fields(part)
+		if len(fields) < 1 {
+			continue
+		}
+
+		url := fields[0]
+		width := 0
+
+		if len(fields) >= 2 {
+			desc := fields[len(fields)-1]
+			if strings.HasSuffix(desc, "w") {
+				// Width descriptor
+				wStr := strings.TrimSuffix(desc, "w")
+				if w, err := strconv.Atoi(wStr); err == nil {
+					width = w
+				}
+			} else if strings.HasSuffix(desc, "x") {
+				// Density descriptor - convert to width using a base of 1
+				dStr := strings.TrimSuffix(desc, "x")
+				if d, err := strconv.ParseFloat(dStr, 64); err == nil && d > 0 {
+					// Assume base width of 100vw for density
+					width = int(100 * d)
+				}
+			}
+		}
+
+		// Default width if not specified
+		if width == 0 {
+			width = int(viewportWidth)
+		}
+
+		candidates = append(candidates, struct {
+			url   string
+			width int
+		}{url, width})
+	}
+
+	if len(candidates) == 0 {
+		return ""
+	}
+
+	// Find the best match: select the smallest image that is >= viewportWidth
+	// If none are >= viewportWidth, select the largest
+	bestIdx := 0
+	bestWidth := candidates[0].width
+
+	for i, cand := range candidates {
+		if cand.width >= int(viewportWidth) {
+			if bestWidth < int(viewportWidth) || cand.width < bestWidth {
+				bestIdx = i
+				bestWidth = cand.width
+			}
+		} else if cand.width > bestWidth {
+			bestIdx = i
+			bestWidth = cand.width
+		}
+	}
+
+	return candidates[bestIdx].url
 }

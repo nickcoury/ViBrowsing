@@ -14,6 +14,19 @@ import (
 	"github.com/nickcoury/ViBrowsing/internal/render"
 )
 
+// HistoryEntry represents a single history entry
+type HistoryEntry struct {
+	URL   string
+	Title string
+}
+
+// BrowserState holds browser session state
+type BrowserState struct {
+	CookieJar *fetch.CookieJar
+	History   []HistoryEntry
+	HistoryIndex int
+}
+
 // PageState holds the current page data for navigation and selection
 type PageState struct {
 	URL        string
@@ -32,11 +45,24 @@ type Rect struct {
 	X, Y, W, H int
 }
 
+// LinkTarget represents the target frame/window for a link
+type LinkTarget int
+
+const (
+	LinkTargetSelf   LinkTarget = iota // Current frame/window (default)
+	LinkTargetBlank                    // New window/tab
+	LinkTargetParent                   // Parent frame
+	LinkTargetTop                      // Top-level window
+	LinkTargetNamed                    // Named frame/window
+)
+
 // LinkInfo stores the bounding box and URL for a clickable link
 type LinkInfo struct {
-	Box  *layout.Box
-	HREF string
-	Rect Rect
+	Box    *layout.Box
+	HREF   string
+	Rect   Rect
+	Target LinkTarget
+	TargetName string // For named targets (e.g., target="myframe")
 }
 
 // Selection stores text selection state
@@ -86,15 +112,55 @@ func main() {
 		}
 	}
 
+	// Initialize browser state
+	browser := &BrowserState{
+		CookieJar:    fetch.NewCookieJar(),
+		History:      make([]HistoryEntry, 0),
+		HistoryIndex: -1,
+	}
+
+	// Navigate to the URL
+	page := navigateToURL(browser, url, *flagUserAgent, viewportW, viewportH)
+	if page == nil {
+		os.Exit(1)
+	}
+
+	// Handle history navigation commands
+	// For now, just render the page (history navigation would be interactive)
+
+	// Also print extracted text as sanity check
+	body := page.DOM.QuerySelectorAll("body")
+	if len(body) > 0 {
+		text := strings.TrimSpace(body[0].InnerText())
+		if len(text) > 200 {
+			text = text[:200] + "..."
+		}
+		fmt.Printf("\nExtracted text: %s\n", text)
+	}
+}
+
+// navigateToURL fetches a URL and builds the page state
+func navigateToURL(browser *BrowserState, url, userAgent string, viewportW, viewportH int) *PageState {
 	if *flagDebug {
 		fmt.Printf("ViBrowsing fetching: %s\n", url)
 	}
 
-	// Fetch the page
-	resp, err := fetch.Fetch(url, *flagUserAgent, 10)
+	// Fetch the page with cookie support
+	resp, err := fetch.Fetch(url, userAgent, 10, browser.CookieJar)
 	if err != nil {
 		fmt.Printf("Fetch error: %v\n", err)
-		os.Exit(1)
+		return nil
+	}
+
+	// Add to history (clear any forward history when navigating to new URL)
+	if browser.HistoryIndex < len(browser.History)-1 {
+		browser.History = browser.History[:browser.HistoryIndex+1]
+	}
+	browser.History = append(browser.History, HistoryEntry{URL: resp.FinalURL})
+	browser.HistoryIndex = len(browser.History) - 1
+
+	if *flagDebug {
+		fmt.Printf("History: %d entries, current: %d\n", len(browser.History), browser.HistoryIndex)
 	}
 
 	// Build DOM tree
@@ -145,7 +211,7 @@ func main() {
 	layoutBox := layout.BuildLayoutTree(dom, cssRules)
 	if layoutBox == nil {
 		fmt.Println("No layout (no body found)")
-		os.Exit(1)
+		return nil
 	}
 
 	// Layout the page
@@ -164,20 +230,85 @@ func main() {
 	outputFile := *flagOutput
 	if err := canvas.SavePNG(outputFile); err != nil {
 		fmt.Printf("Failed to save PNG: %v\n", err)
-		os.Exit(1)
+		return nil
 	}
 
 	if *flagDebug {
 		fmt.Printf("Rendered to %s\n", outputFile)
 	}
 
-	// Also print extracted text as sanity check
-	body := dom.QuerySelectorAll("body")
-	if len(body) > 0 {
-		text := strings.TrimSpace(body[0].InnerText())
-		if len(text) > 200 {
-			text = text[:200] + "..."
+	// Extract title for history
+	title := fetch.ExtractTitle(dom)
+	if title != "" {
+		browser.History[browser.HistoryIndex].Title = title
+	}
+
+	// Extract links with their targets
+	links := extractLinks(layoutBox, dom, resp.FinalURL)
+
+	return &PageState{
+		URL:        resp.FinalURL,
+		DOM:        dom,
+		Layout:     layoutBox,
+		Canvas:     canvas,
+		ViewportW:  viewportW,
+		ViewportH:  viewportH,
+		Links:      links,
+		Selection:  nil,
+		ErrorPage:  resp.StatusCode >= 400,
+	}
+}
+
+// extractLinks extracts all links from the DOM and layout, with their targets
+func extractLinks(layoutBox *layout.Box, dom *html.Node, baseURL string) []LinkInfo {
+	var links []LinkInfo
+	if dom == nil {
+		return links
+	}
+
+	// Find all <a> elements
+	anchorNodes := dom.QuerySelectorAll("a")
+	for _, a := range anchorNodes {
+		href := a.GetAttribute("href")
+		if href == "" {
+			continue
 		}
-		fmt.Printf("\nExtracted text: %s\n", text)
+
+		// Resolve the URL
+		resolvedHREF := fetch.ResolveURL(href, baseURL)
+
+		// Get the target attribute
+		target := a.GetAttribute("target")
+		linkTarget, targetName := parseLinkTarget(target)
+
+		// Try to find the layout box for this anchor
+		// For now, we store the info even without precise bounds
+		linkInfo := LinkInfo{
+			HREF:       resolvedHREF,
+			Target:     linkTarget,
+			TargetName: targetName,
+		}
+		links = append(links, linkInfo)
+	}
+
+	return links
+}
+
+// parseLinkTarget parses the target attribute and returns the LinkTarget and target name
+func parseLinkTarget(target string) (LinkTarget, string) {
+	switch strings.ToLower(target) {
+	case "_blank":
+		return LinkTargetBlank, ""
+	case "_self":
+		return LinkTargetSelf, ""
+	case "_parent":
+		return LinkTargetParent, ""
+	case "_top":
+		return LinkTargetTop, ""
+	case "":
+		return LinkTargetSelf, ""
+	default:
+		// Named target (frame or window name)
+		return LinkTargetNamed, target
 	}
 }
