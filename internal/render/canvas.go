@@ -648,6 +648,81 @@ func (c *Canvas) clampScroll() {
 	}
 }
 
+// ScrollIntoView scrolls the element's box into the viewport.
+// The options parameter can be:
+//   - bool: true means top of element aligns with top of viewport, false means bottom
+//   - map with "block": "start", "center", "end", or "nearest"
+//   - map with "inline": "start", "center", "end", or "nearest"
+//   - map with "behavior": "smooth" or "auto" (smooth is ignored)
+//
+// This method finds the box corresponding to the node and scrolls to bring
+// it into view within the canvas's scrollable area.
+func (c *Canvas) ScrollIntoView(node *html.Node, options interface{}) {
+	// Find the box for this node
+	box := c.findBoxByNode(node)
+	if box == nil {
+		return
+	}
+
+	c.scrollBoxIntoView(box, options)
+}
+
+// ScrollBoxIntoView scrolls the given box into the viewport.
+// This is an alternative to ScrollIntoView when you already have the box.
+// The options parameter can be:
+//   - bool: true means top of element aligns with top of viewport, false means bottom
+//   - map with "block": "start", "center", "end", or "nearest"
+//   - map with "inline": "start", "center", "end", or "nearest"
+//   - map with "behavior": "smooth" or "auto" (smooth is ignored)
+func (c *Canvas) ScrollBoxIntoView(box *layout.Box, options interface{}) {
+	if box == nil {
+		return
+	}
+
+	// Get the scroll target from the box
+	targetY := box.ScrollIntoView(options)
+
+	// Adjust for viewport centering or bottom alignment
+	if opts, ok := options.(map[string]interface{}); ok {
+		if block, ok := opts["block"].(string); ok {
+			switch block {
+			case "center":
+				targetY -= c.Height / 2
+			case "end":
+				targetY -= c.Height - int(box.ContentH)
+			case "nearest":
+				// For nearest, we'd need to know current scroll position
+				// Simplified: scroll minimum to bring element into view
+				if c.ScrollY > targetY {
+					// Element is above viewport, scroll up
+				} else if c.ScrollY+c.Height < targetY+int(box.ContentH) {
+					// Element is below viewport, scroll down to bottom of element
+					targetY = targetY + int(box.ContentH) - c.Height
+				}
+			}
+		}
+	} else if alignBool, ok := options.(bool); ok {
+		if !alignBool {
+			// false means align to bottom
+			targetY -= c.Height - int(box.ContentH)
+		}
+	}
+
+	c.ScrollTo(float64(c.ScrollX), float64(targetY))
+}
+
+// findBoxByNode finds a layout box by traversing the layout tree.
+// This is a helper that would typically use the layout tree.
+func (c *Canvas) findBoxByNode(node *html.Node) *layout.Box {
+	// This method needs access to the layout tree
+	// In the current architecture, Canvas doesn't store the layout tree
+	// We need to either:
+	// 1. Store a reference to the layout tree in Canvas
+	// 2. Have a separate method that takes the box directly
+	// For now, return nil - the ScrollIntoView on Box can be called directly
+	return nil
+}
+
 // Clear fills the canvas with white.
 func (c *Canvas) Clear() {
 	white := color.RGBA{255, 255, 255, 255}

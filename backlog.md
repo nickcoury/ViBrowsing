@@ -469,9 +469,9 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ## 🟠 Low (HTML Elements)
 
-- [ ] **Implement `<colgroup>` and `<col>`** — column grouping for table column widths
+- [x] ~~Implement `<colgroup>` and `<col>`~~ (2026-04-07 sprint) — ColumnBox for colgroup/col; span attribute on col; collectColumnWidths
 - [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — proper table section rendering order
-- [ ] **Implement `<td colspan>` and `<td rowspan>`** — cell spanning for complex tables
+- [x] ~~Implement `<td colspan>` and `<td rowspan>`~~ (2026-04-07 sprint) — tableGrid tracks cell positions; layoutTableRowWithGrid
 - [ ] **Implement `<figure>` and `<figcaption>`** — figure with caption rendered below/above
 - [ ] **Implement `<dialog>` modal** — dialog element with backdrop
 - [ ] **Implement `<slot>` and shadow DOM** — web component slot projection
@@ -491,39 +491,39 @@ The html5lib Python project has comprehensive HTML parsing tests:
 ### 🟡 High Priority
 
 - [x] ~~Implement CSS `resize` property~~ (2026-04-04 sprint 2) — resize property stored in style defaults
-- **Implement `<details>` and `<summary>` toggle** — disclosure widget, click summary to toggle content visibility
+- [x] ~~Implement `<details>` and `<summary>` toggle~~ (2026-04-07 sprint) — DetailsBox/SummaryBox types; details toggles open/closed state; summary is clickable label
 - [x] ~~Implement CSS `pointer-events`~~ (2026-04-04 sprint 2) — pointer-events stored in style defaults
-- **Implement `<picture>` element** — responsive images with `<source srcset="...">` fallback chain
+- [x] ~~Implement `<picture>` element~~ (2026-04-07 sprint) — responsive images with source srcset fallback chain; resolvePictureSource selects best image based on viewport/dpr
 - [x] ~~Implement CSS `will-change` hint~~ (2026-04-04 sprint 2) — will-change stored in style defaults
 - [x] ~~Implement CSS `image-rendering`~~ (2026-04-04 sprint 2) — image-rendering stored in style defaults
-- **Implement `window.scrollTo()` and `window.scrollBy()`** — programmatic scroll APIs
-- **Implement `element.scrollIntoView()`** — scroll element into viewport (start/center/end/nearest)
+- [x] ~~Implement `window.scrollTo()` and `window.scrollBy()`~~ (2026-04-07 sprint) — Window.ScrollTo/ScrollBy with {top,left,behavior} options; scrollTo for absolute, scrollBy for relative positioning
+- [x] ~~Implement `element.scrollIntoView()`~~ (2026-04-07 sprint) — Box.ScrollIntoView method with {block,inline,behavior} options; FindBoxByNode traverses layout tree; Canvas.ScrollIntoView high-level API
 - [x] ~~Implement CSS `scroll-behavior`~~ (2026-04-04 sprint 2) — scroll-behavior stored in style defaults
 
 ### 🟢 Medium Priority
 
-- **Implement `window.innerWidth`, `window.innerHeight`** — viewport dimensions accessible via JavaScript
-- **Implement `navigator.userAgent`** — expose user agent string via navigator object
+- [x] ~~Implement `window.innerWidth`, `window.innerHeight`~~ (2026-04-07 sprint) — returns viewport width/height in CSS pixels from Window object
+- [x] ~~Implement `navigator.userAgent`~~ (2026-04-07 sprint) — Navigator API with UserAgent, AppCodeName, AppName, AppVersion, Platform; NewNavigator/NewNavigatorWithAgent constructors
 - [x] ~~Implement CSS `overscroll-behavior`~~ (2026-04-04 sprint 2) — overscroll-behavior stored in style defaults
 - [x] ~~Implement `<del>` and `<ins>` elements~~ (2026-04-04 sprint 2) — del renders strikethrough, ins renders underline
 - [x] ~~Implement CSS `text-decoration-line/color/style`~~ (2026-04-04 sprint 2) — individual properties parsed; text-decoration shorthand parses all three; rendering in DrawText
 - [x] ~~Implement `<output>` element~~ (2026-04-04 sprint 2) — output element handled as inline box
-- **Implement CSS `font-stretch`** — narrow/wider font variants (ultra-condensed to ultra-expanded)
-- **Implement CSS `place-items` and `place-self`** — alignment shorthands for grid/flex
+- [x] ~~Implement CSS `font-stretch`~~ (2026-04-07 sprint) — ultra-condensed to ultra-expanded keywords; font shorthand updated to parse stretch value
+- [x] ~~Implement CSS `place-items` and `place-self`~~ (2026-04-07 sprint) — alignment shorthands; place-items: <align> <justify>?; place-self: <align-self> <justify-self>?; justify-items/justify-self individual properties added
 - [x] ~~Implement CSS `mix-blend-mode`~~ (2026-04-04 sprint 2) — mix-blend-mode stored in style defaults
 - [x] ~~Implement CSS `hanging-punctuation`~~ (2026-04-04 sprint 2) — hanging-punctuation stored in style defaults
 - [x] ~~Implement CSS `contain` property~~ (2026-04-04 sprint 2) — contain stored in style defaults
-- **Implement `CSS.supports()` API** — programmatic @supports check: `CSS.supports('display', 'grid')`
-- **Implement `window.matchMedia()`** — MediaQueryList interface for JavaScript media query checks
-- **Implement CSS `transform-box`** — `transform-box: view-box/content-box/fill-box` for transform reference box
+- [x] ~~Implement `CSS.supports()` API~~ (2026-04-07 sprint) — CSS.Supports(property, value) and CSS.Supports(condition) for @supports evaluation from JS
+- [x] ~~Implement `window.matchMedia()`~~ (2026-04-07 sprint) — MatchMedia returns MediaQueryList with Matches and MediaQuery properties; supports media types and feature queries
+- [x] ~~Implement CSS `transform-box`~~ (2026-04-07 sprint) — transform-box: view-box/content-box/fill-box; determines reference box for CSS transforms
 
 ### 🟠 Low Priority
 
-- **Implement `<map>` and `<area>`** — client-side image maps with clickable regions (legacy but still used)
-- **Implement `IntersectionObserver`** — viewport visibility detection for lazy loading and scroll tracking
-- **Implement `ResizeObserver`** — element resize detection for responsive components
+- [x] ~~Implement `<map>` and `<area>`~~ (2026-04-07 sprint) — MapBox/AreaBox types with MapName, AreaShape, AreaCoords; area parses rect/circle/poly/default shapes with coords
+- [x] ~~Implement `IntersectionObserver`~~ (2026-04-07 sprint) — IntersectionObserver with Observe/Unobserve/Disconnect; IntersectionObservation tracks elements; CheckAndNotify calculates intersection ratios and fires callback
+- [x] ~~Implement `ResizeObserver`~~ (2026-04-07 sprint) — ResizeObserver with Observe/Unobserve/Disconnect; CheckAndNotify detects size changes and fires callback with ResizeObserverEntry
 - **Implement `ime-mode` CSS property** — input method editor hints for East Asian input
-- **Implement `<data>` element** — machine-readable data wrapper with `value=""` attribute
+- [x] ~~Implement `<data>` element~~ (2026-04-07 sprint) — DataBox type with DataValue property; renders as inline box; value attribute stored for programmatic access
 
 
 ## 🆕 New Items (2026-04-04 Sprint)
@@ -852,7 +852,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Implement `<colgroup>` and `<col>`** — Column grouping for table column widths and styles
 - [ ] **Implement `<td colspan>` and `<td rowspan>`** — Cell spanning for complex tables with merged cells
-- [ ] **Implement `<figure>` and `<figcaption>`** — Figure with caption rendered below/above
+- [x] ~~Implement `<figure>` and `<figcaption>`~~ (2026-04-07 sprint) — FigureBox and FigcaptionBox types in BoxType enum; buildBox handles figure/figcaption tags; caption positioned above/below figure content
 
 ### 🟡 High (CSS Properties)
 
@@ -894,3 +894,64 @@ The html5lib Python project has comprehensive HTML parsing tests:
 - [ ] **Visual screenshot regression tests** — Collect baseline screenshots of known pages, diff on changes
 - [ ] **go-fuzz fuzz testing** — Generate random HTML/CSS, verify parser/renderer doesn't panic on malformed input
 - [ ] **Performance regression CI** — Fail build if parse+layout time increases >10% vs baseline
+
+## 🆕 New Items (2026-04-07 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline; vertical-align: middle/bottom should position relative to that baseline
+- [ ] **Fix table cell border-collapse rendering** — adjacent table cells should share borders (border-collapse behavior), currently each cell renders its own border
+- [ ] **Fix float clearing logic** — blocks that clear:left/right/both should properly position below the float, not overlap it
+- [ ] **Fix `<colgroup>` width application** — column widths from colgroup/col elements are collected but not yet applied to table cell widths during layout
+
+### 🟡 High (Layout/Rendering)
+
+- [ ] **Implement `<canvas>` 2D context** — Render canvas 2D drawing API (rect, arc, path, text, image) to output buffer; implement getContext('2d') returning CanvasRenderingContext2D
+- [ ] **Implement CSS `transform` drawing** — Apply rotate(), scale(), translate(), skew(), matrix() 2D transforms to elements during rendering using transform-box reference
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK and other writing systems; text flows top-to-bottom or bottom-to-top
+- [ ] **Implement `<thead>`, `<tbody>`, `<tfoot>` table sections** — proper table section rendering order; these elements should not affect visual layout but organize table structure
+- [ ] **Implement `hyphens: auto/manual`** — Automatic hyphenation of words at line breaks using hyphenate character (U+00AD)
+
+### 🟡 High (HTML Elements)
+
+- [ ] **Implement `<dialog>` modal fully** — modal dialog with backdrop; showModal() and close() methods; backdrop should apply backdrop-filter blur
+- [ ] **Implement `<slot>` and shadow DOM fully** — slot projection for web components; fallback to display:contents when no slot assignment
+- [ ] **Implement `<template>` activation** — templates are parsed but not rendered; need JS API to clone and insert template content into document
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `unicode-bidi: isolate/embed/override`** — Bidirectional text isolation and override for RTL content; isolate-unicode-level resets embedding level
+- [ ] **Implement CSS `text-justify: inter-word/inter-character`** — Justification algorithm for better text alignment; inter-character adjusts spacing between characters
+- [ ] **Implement CSS `@container` queries** — Container-style responsive design; @container rule with size queries on named containers
+- [ ] **Implement CSS `break-inside: avoid/avoid-page/avoid-column`** — Prevent breaks inside elements; used for keeping tables, figures, cards together
+
+### 🟡 High (DOM APIs)
+
+- [ ] **Implement `getComputedStyle()`** — Return the computed style object for an element (all CSS properties as they resolve after cascade)
+- [ ] **Implement `getBoundingClientRect()`** — Return element position relative to viewport (x, y, width, height, top, right, bottom, left)
+- [ ] **Implement `innerText`** — Get rendered text content (like textContent but CSS-aware, respects display and visibility)
+
+### 🟢 Medium (Features)
+
+- [ ] **Implement find-in-page** — Ctrl+F to search for text in rendered page and highlight matches; show count of matches
+- [ ] **Implement right-click context menu** — Copy link, copy text, open in new tab options on right-click
+- [ ] **Implement loading progress indicator** — Spinner/progress bar during page fetch; update from 0-100% as content loads
+- [ ] **Implement `window.print()`** — Trigger print dialog with current page content; should apply @media print styles
+- [ ] **Implement `@media print` styles** — Apply print-specific stylesheet rules; hide navigation, expand hidden sections, optimize for paper
+
+### 🟢 Medium (Performance)
+
+- [ ] **Text measurement caching** — Cache Ebitengine font.MeasureString results per font/size/style combination; use sync.Map to store/retrieve
+- [ ] **Memory pool for nodes** — Use sync.Pool to reuse allocated Node/Token/Box objects instead of GC-heavy allocation per parse
+- [ ] **CSS selector caching** — Cache selector match results for unchanged DOM/subtree; invalidate on DOM mutations
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `opacity` per draw call** — Apply alpha blending per element not just whole box; each DrawBox should respect element opacity
+- [ ] **Implement `outline` drawing** — outline is stored but never drawn; draw outline outside border box with outline-offset spacing
+- [ ] **Implement emoji rendering via fontconfig** — Use fontconfig to find and load color emoji fonts for proper emoji display
+
+### 🟠 Low (Testing & QA)
+
+- [ ] **Property-based testing with go-fuzz** — Generate random HTML/CSS combinations and verify no panics or hangs
+- [ ] **Large document stress test** — Parse and render 10MB+ HTML file; verify memory usage stays under 500MB and completes within 30s

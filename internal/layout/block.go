@@ -283,6 +283,20 @@ func layoutChildren(box *Box, ctx *LayoutContext) {
 			ctx.LineBoxStartY = ctx.Y
 			ctx.LineBoxChildren = nil
 			layoutFieldset(child, ctx)
+		case PictureBox:
+			// PictureBox is an inline-level element (replaced element container)
+			prevY := ctx.Y
+			layoutPicture(child, box, ctx)
+			// Check if we wrapped to a new line
+			if ctx.Y > prevY {
+				// New line started — flush previous line box
+				applyVerticalAlignments(ctx)
+				ctx.LineBoxBaseline = 0
+				ctx.LineBoxMaxAscent = 0
+				ctx.LineBoxMaxDescent = 0
+				ctx.LineBoxStartY = ctx.Y
+				ctx.LineBoxChildren = nil
+			}
 		}
 	}
 	// Flush any remaining line box
@@ -1361,12 +1375,16 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 		captionSide = "top"
 	}
 
-	// Find caption and table rows/sections
+	// Find caption, column groups, and table rows/sections
 	var caption *Box
 	var tableRows []*Box
+	var colElements []*Box // col and colgroup elements for column info
 	for _, child := range box.Children {
 		if child.Type == TableCaptionBox {
 			caption = child
+		} else if child.Type == ColumnBox {
+			// Collect col/colgroup elements for column width information
+			colElements = append(colElements, child)
 		} else if child.Type == TableRowBox {
 			tableRows = append(tableRows, child)
 		} else if child.Type == TableSectionBox {
@@ -1378,6 +1396,10 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 			}
 		}
 	}
+
+	// Collect column widths from col/colgroup elements
+	// colgroups and cols can specify width via style or span attribute
+	colWidths := collectColumnWidths(colElements, width)
 
 	// Layout caption if present
 	captionHeight := 0.0
@@ -1393,14 +1415,18 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 		}
 	}
 
+	// First pass: collect all cells and build the table grid
+	// This handles rowspan by marking which grid cells are occupied
+	grid := buildTableGrid(tableRows, len(colWidths))
+
 	// Layout each row and compute total table height
 	totalHeight := 0.0
-	for _, row := range tableRows {
-		layoutTableRow(row, &LayoutContext{
+	for i, row := range tableRows {
+		layoutTableRowWithGrid(row, &LayoutContext{
 			Width: width,
 			X:     box.ContentX,
 			Y:     box.ContentY + captionHeight + totalHeight,
-		})
+		}, colWidths, grid, i)
 		totalHeight += row.ContentH
 	}
 
@@ -1420,6 +1446,215 @@ func layoutTableContainer(box *Box, ctx *LayoutContext) {
 	// Update cursor
 	nextY := box.ContentY + box.ContentH + marginBottom
 	ctx.Y = nextY
+}
+
+// collectColumnWidths extracts column width information from col/colgroup elements.
+// Returns a slice of column widths (in pixels), one per logical column.
+func collectColumnWidths(colElements []*Box, tableWidth float64) []float64 {
+	var colWidths []float64
+
+	for _, colEl := range colElements {
+		span := 1
+		if colEl.ColSpan > 1 {
+			span = colEl.ColSpan
+		}
+
+		// Check for width style on this col/colgroup
+		widthStr := colEl.Style["width"]
+		colWidth := 0.0
+		if widthStr != "" {
+			l := css.ParseLength(widthStr)
+			if l.Unit == css.UnitPx {
+				colWidth = l.Value
+			} else if l.Unit == css.UnitPercent {
+				colWidth = tableWidth * l.Value / 100
+			}
+		}
+
+		// Add width entries for each column this col/colgroup represents
+		for i := 0; i < span; i++ {
+			colWidths = append(colWidths, colWidth)
+		}
+	}
+
+	return colWidths
+}
+
+// tableGrid represents the table's cell grid for handling colspan and rowspan.
+type tableGrid struct {
+	cells    [][]*Box // cells[row][col] = cell or nil if occupied by spanning cell
+	numCols  int
+	numRows  int
+}
+
+// buildTableGrid builds a grid representation of the table for colspan/rowspan handling.
+// Returns a grid where each cell points to the box that occupies it.
+func buildTableGrid(tableRows []*Box, minCols int) *tableGrid {
+	// First pass: determine dimensions
+	numRows := len(tableRows)
+	numCols := minCols
+	if numCols == 0 {
+		numCols = 1
+	}
+
+	// Count actual columns needed based on colspan
+	for _, row := range tableRows {
+		colCount := 0
+		for _, child := range row.Children {
+			if child.Type == TableCellBox {
+				colCount += child.ColSpan
+			}
+		}
+		if colCount > numCols {
+			numCols = colCount
+		}
+	}
+
+	// Allocate grid
+	grid := &tableGrid{
+		cells:   make([][]*Box, numRows),
+		numCols: numCols,
+		numRows: numRows,
+	}
+	for i := range grid.cells {
+		grid.cells[i] = make([]*Box, numCols)
+	}
+
+	// Fill grid with cells
+	for rowIdx, row := range tableRows {
+		colIdx := 0
+		for _, child := range row.Children {
+			if child.Type == TableCellBox {
+				// Find next empty column
+				for colIdx < numCols && grid.cells[rowIdx][colIdx] != nil {
+					colIdx++
+				}
+				// Place cell and handle colspan/rowspan
+				for r := 0; r < child.RowSpan && rowIdx+r < numRows; r++ {
+					for c := 0; c < child.ColSpan && colIdx+c < numCols; c++ {
+						if r == 0 && c == 0 {
+							grid.cells[rowIdx+r][colIdx+c] = child
+						} else {
+							// Mark as occupied by a spanning cell
+							grid.cells[rowIdx+r][colIdx+c] = child
+						}
+					}
+				}
+				colIdx += child.ColSpan
+			}
+		}
+	}
+
+	return grid
+}
+
+// layoutTableRowWithGrid handles layout for a table-row box with colspan/rowspan support.
+func layoutTableRowWithGrid(box *Box, ctx *LayoutContext, colWidths []float64, grid *tableGrid, rowIndex int) {
+	width := ctx.Width
+	numCols := len(colWidths)
+	if numCols == 0 {
+		// Calculate columns from cells
+		numCols = 0
+		for _, child := range box.Children {
+			if child.Type == TableCellBox {
+				numCols += child.ColSpan
+			}
+		}
+		if numCols == 0 {
+			numCols = 1
+		}
+	}
+
+	// Calculate column widths if not provided
+	if len(colWidths) == 0 {
+		colWidths = make([]float64, numCols)
+		colWidth := width / float64(numCols)
+		for i := range colWidths {
+			colWidths[i] = colWidth
+		}
+	}
+
+	// Position cells horizontally using grid
+	x := ctx.X
+	maxHeight := 0.0
+	colIndex := 0
+
+	for colIndex < grid.numCols {
+		// Find the cell at this position in the grid
+		cell := grid.cells[rowIndex][colIndex]
+		if cell == nil {
+			// Empty cell - just advance
+			colIndex++
+			continue
+		}
+
+		// Check if this is the "origin" cell for this box (top-left of its span)
+		isOrigin := false
+		if cell.RowSpan > 1 || cell.ColSpan > 1 {
+			// For spanning cells, find where they actually start
+			for r := 0; r < cell.RowSpan && rowIndex-r >= 0; r++ {
+				for c := 0; c < cell.ColSpan && colIndex-c >= 0; c++ {
+					if grid.cells[rowIndex-r][colIndex-c] == cell {
+						isOrigin = (r == 0 && c == 0)
+						break
+					}
+				}
+				if isOrigin {
+					break
+				}
+			}
+		} else {
+			isOrigin = true
+		}
+
+		if !isOrigin {
+			// This grid cell is occupied by a spanning cell from above/left
+			colIndex++
+			continue
+		}
+
+		// Calculate cell width based on colspan
+		cellW := 0.0
+		for c := 0; c < cell.ColSpan && colIndex+c < len(colWidths); c++ {
+			cellW += colWidths[colIndex+c]
+		}
+		if cellW == 0 {
+			cellW = width / float64(numCols) * float64(cell.ColSpan)
+		}
+
+		cellH := computeHeight(cell, nil)
+		if cellH > maxHeight {
+			maxHeight = cellH
+		}
+
+		cell.ContentX = x
+		cell.ContentY = ctx.Y
+		cell.ContentW = cellW
+		cell.ColumnIndex = colIndex
+
+		// Layout cell contents
+		cellCtx := &LayoutContext{
+			Width: cellW,
+			X:     x,
+			Y:     ctx.Y,
+		}
+		layoutChildren(cell, cellCtx)
+		cell.ContentH = computeHeight(cell, cellCtx)
+		if cell.ContentH > maxHeight {
+			maxHeight = cell.ContentH
+		}
+
+		x += cellW
+		colIndex += cell.ColSpan
+	}
+
+	box.ContentX = ctx.X
+	box.ContentY = ctx.Y
+	box.ContentW = width
+	box.ContentH = maxHeight
+
+	// Update cursor
+	ctx.Y += maxHeight
 }
 
 // layoutCaption handles layout for a table caption.
@@ -1740,4 +1975,57 @@ func layoutFieldset(box *Box, ctx *LayoutContext) {
 
 	// Store fieldset dimensions for potential rendering use
 	box.Style["_fieldset_legend_height"] = strconv.FormatFloat(legendHeight, 'f', 2, 64)
+}
+
+// layoutPicture handles layout for a <picture> element.
+// The picture element has already had its source resolved by resolvePictureSource
+// during box tree building, so it contains only the selected img child.
+func layoutPicture(box *Box, parent *Box, ctx *LayoutContext) {
+	// Picture is an inline-level replaced element container
+	// Its single child should be an ImageBox after source resolution
+	if len(box.Children) == 0 {
+		box.ContentW = 0
+		box.ContentH = 0
+		return
+	}
+
+	// The img child handles its own layout
+	imgChild := box.Children[0]
+	if imgChild.Type == ImageBox {
+		// Layout as inline element
+		marginLeft := resolveLength("margin-left", box, ctx.Width)
+		marginRight := resolveLength("margin-right", box, ctx.Width)
+		width := computeWidth(imgChild, ctx.Width)
+
+		totalWidth := marginLeft + width + marginRight
+		if ctx.X+totalWidth > parent.ContentW && ctx.X > 0 {
+			// Wrap to next line
+			ctx.Y += ctx.LineBoxMaxAscent + ctx.LineBoxMaxDescent
+			ctx.X = 0
+		}
+
+		imgChild.ContentX = ctx.X + marginLeft
+		imgChild.ContentY = ctx.LineBoxStartY
+		imgChild.ContentW = width
+		imgChild.ContentH = computeHeight(imgChild, nil)
+
+		// Track for vertical-align
+		ctx.LineBoxChildren = append(ctx.LineBoxChildren, imgChild)
+
+		ctx.X += marginLeft + width + marginRight
+
+		// Update picture box dimensions to match img
+		box.ContentX = imgChild.ContentX
+		box.ContentY = imgChild.ContentY
+		box.ContentW = imgChild.ContentW
+		box.ContentH = imgChild.ContentH
+	} else {
+		// Fallback: layout as inline box
+		width := computeWidth(box, ctx.Width)
+		box.ContentX = ctx.X
+		box.ContentY = ctx.LineBoxStartY
+		box.ContentW = width
+		box.ContentH = computeHeight(box, nil)
+		ctx.X += width
+	}
 }

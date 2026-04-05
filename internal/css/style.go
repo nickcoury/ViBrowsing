@@ -153,9 +153,11 @@ func ComputeStyle(tagName string, class string, id string, inlineStyles []Declar
 		"hanging-punctuation": "none",
 		"font-stretch":         "normal",
 		"transform-box":        "view-box",
-		"place-items":         "normal",
-		"place-self":          "normal",
-		"user-select":        "auto",
+		"place-items":          "normal",
+		"place-self":           "normal",
+		"justify-items":        "normal",
+		"justify-self":         "auto",
+		"user-select":         "auto",
 	}
 
 	// Element-specific default styles (HTML5 user agent defaults)
@@ -403,9 +405,11 @@ func ComputeStyleForNode(node *html.Node, rules []Rule) map[string]string {
 		"hanging-punctuation": "none",
 		"font-stretch":         "normal",
 		"transform-box":        "view-box",
-		"place-items":         "normal",
-		"place-self":          "normal",
-		"user-select":        "auto",
+		"place-items":          "normal",
+		"place-self":           "normal",
+		"justify-items":        "normal",
+		"justify-self":         "auto",
+		"user-select":         "auto",
 	}
 
 	// Element-specific defaults
@@ -1478,9 +1482,11 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["font-family"] = value
 	case "font-weight":
 		props["font-weight"] = value
+	case "font-stretch":
+		props["font-stretch"] = value
 	case "font":
-		// Font shorthand: [style] [variant] [weight] size[/line-height] family
-		// Examples: "12px Arial", "bold 16px sans-serif", "italic 12px/1.5 serif"
+		// Font shorthand: [style] [variant] [weight] [stretch] size[/line-height] family
+		// Examples: "12px Arial", "bold 16px sans-serif", "italic 12px/1.5 serif", "semi-condensed 16px Arial"
 		parts := strings.Fields(value)
 		if len(parts) >= 2 {
 			// Try to identify size and family
@@ -1503,6 +1509,12 @@ func applyDecl(props map[string]string, decl Declaration) {
 				// Check for style
 				if part == "italic" || part == "oblique" || part == "normal" {
 					props["font-style"] = part
+				}
+				// Check for font-stretch keywords
+				if part == "ultra-condensed" || part == "extra-condensed" || part == "condensed" ||
+					part == "semi-condensed" || part == "semi-expanded" || part == "expanded" ||
+					part == "extra-expanded" || part == "ultra-expanded" {
+					props["font-stretch"] = part
 				}
 				// Check for weight
 				if part == "bold" || part == "bolder" || part == "lighter" || part == "normal" {
@@ -1567,9 +1579,35 @@ func applyDecl(props map[string]string, decl Declaration) {
 	case "ruby-position":
 		props["ruby-position"] = value
 	case "place-items":
+		// Shorthand: align-items justify-items
+		// If only one value is provided, it applies to both
+		parts := strings.Fields(value)
+		if len(parts) >= 1 {
+			props["align-items"] = parts[0]
+		}
+		if len(parts) >= 2 {
+			props["justify-items"] = parts[1]
+		} else {
+			props["justify-items"] = parts[0]
+		}
 		props["place-items"] = value
 	case "place-self":
+		// Shorthand: align-self justify-self
+		// If only one value is provided, it applies to both
+		parts := strings.Fields(value)
+		if len(parts) >= 1 {
+			props["align-self"] = parts[0]
+		}
+		if len(parts) >= 2 {
+			props["justify-self"] = parts[1]
+		} else {
+			props["justify-self"] = parts[0]
+		}
 		props["place-self"] = value
+	case "justify-items":
+		props["justify-items"] = value
+	case "justify-self":
+		props["justify-self"] = value
 	case "place-content":
 		props["place-content"] = value
 	case "text-wrap":
@@ -1616,6 +1654,8 @@ func applyDecl(props map[string]string, decl Declaration) {
 		props["cursor"] = value
 	case "transform":
 		props["transform"] = value
+	case "transform-box":
+		props["transform-box"] = value
 	case "position":
 		props["position"] = value
 	case "top":

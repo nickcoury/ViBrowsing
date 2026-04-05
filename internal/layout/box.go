@@ -48,6 +48,8 @@ const (
 	ColumnBox // Multi-column layout column
 	DetailsBox
 	SummaryBox
+	FigureBox
+	FigcaptionBox
 	PictureBox
 	FieldsetBox
 	LegendBox
@@ -91,6 +93,81 @@ type Box struct {
 
 	// Data element property
 	DataValue string // value attribute of <data> element
+}
+
+// FindBoxByNode finds the first box in the tree that corresponds to the given DOM node.
+func (b *Box) FindBoxByNode(node *html.Node) *Box {
+	if b.Node == node {
+		return b
+	}
+	for _, child := range b.Children {
+		if found := child.FindBoxByNode(node); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// ScrollIntoView scrolls the element's box into the viewport.
+// The options parameter can be:
+//   - bool: true means top of element aligns with top of viewport, false means bottom
+//   - map with "block": "start", "center", "end", or "nearest"
+//   - map with "inline": "start", "center", "end", or "nearest"
+//   - map with "behavior": "smooth" or "auto" (smooth is ignored)
+//
+// Returns the computed scroll Y position needed to bring the element into view.
+func (b *Box) ScrollIntoView(options interface{}) int {
+	return b.scrollIntoViewInternal(options, 0)
+}
+
+// scrollIntoViewInternal recursively computes the scroll position for the element.
+func (b *Box) scrollIntoViewInternal(options interface{}, accumulatedY float64) int {
+	// Determine alignment preferences
+	blockAlign := "start"
+	var behavior string
+
+	if opts, ok := options.(map[string]interface{}); ok {
+		if block, ok := opts["block"].(string); ok {
+			blockAlign = block
+		}
+		if bh, ok := opts["behavior"].(string); ok {
+			behavior = bh
+		}
+	} else if alignBool, ok := options.(bool); ok {
+		if alignBool {
+			blockAlign = "start"
+		} else {
+			blockAlign = "end"
+		}
+	}
+
+	// If this box has a node, calculate its absolute Y position
+	if b.Node != nil {
+		absoluteY := b.ContentY + accumulatedY
+
+		switch blockAlign {
+		case "center":
+			// Center element in viewport
+			return int(absoluteY + b.ContentH/2)
+		case "end":
+			// Align bottom of element with bottom of viewport
+			return int(absoluteY + b.ContentH)
+		case "nearest":
+			// For nearest, we would need viewport context - simplified to start
+			return int(absoluteY)
+		default: // "start"
+			return int(absoluteY)
+		}
+	}
+
+	// Recurse to children with accumulated offset
+	for _, child := range b.Children {
+		if result := child.scrollIntoViewInternal(options, accumulatedY+b.ContentY); result != 0 {
+			return result
+		}
+	}
+
+	return 0
 }
 
 // GetWidth returns the computed width of the content area.
@@ -172,8 +249,8 @@ func BuildLayoutTree(doc *html.Node, rules []css.Rule, viewportWidth int, viewpo
 	// Filter rules by media queries
 	filteredRules := css.FilterRulesByMedia(rules, viewportWidth, viewportHeight)
 
-	// Build layout tree recursively
-	box := buildBox(body, filteredRules, 0, nil)
+	// Build layout tree recursively, passing viewport dimensions for picture element
+	box := buildBox(body, filteredRules, 0, nil, float64(viewportWidth), float64(viewportHeight))
 	return box
 }
 
@@ -189,7 +266,7 @@ func findBody(n *html.Node) *html.Node {
 	return nil
 }
 
-func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[string]string) *Box {
+func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[string]string, viewportWidth float64, viewportHeight float64) *Box {
 	if node == nil {
 		return nil
 	}
@@ -345,6 +422,10 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = DetailsBox
 	case "summary":
 		box.Type = SummaryBox
+	case "figure":
+		box.Type = FigureBox
+	case "figcaption":
+		box.Type = FigcaptionBox
 	case "picture":
 		box.Type = PictureBox
 	case "fieldset":
@@ -374,6 +455,19 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 		box.Type = InlineBox
 		// area element - clickable region in image map
 		// areas are void elements that define shapes within a map
+	case "colgroup":
+		box.Type = ColumnBox
+		// colgroup is a column group container - doesn't render directly
+		// but defines column properties for the table
+	case "col":
+		box.Type = ColumnBox
+		// col element defines column properties - doesn't render directly
+		// span attribute indicates how many columns this col represents
+		if span := node.GetAttribute("span"); span != "" {
+			if v, err := strconv.Atoi(span); err == nil && v > 1 {
+				box.ColSpan = v
+			}
+		}
 	}
 
 	// Flex container
@@ -471,7 +565,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 
 	// Recurse for children (pass our computed style as parent style)
 	for _, child := range node.Children {
-		childBox := buildBox(child, rules, depth+1, style)
+		childBox := buildBox(child, rules, depth+1, style, viewportWidth, viewportHeight)
 		if childBox != nil {
 			childBox.Parent = box
 			box.Children = append(box.Children, childBox)
@@ -480,7 +574,7 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 
 	// Handle picture element: select the best source based on viewport
 	if tagName == "picture" {
-		box = resolvePictureSource(box, 800) // default viewport width
+		box = resolvePictureSource(box, viewportWidth)
 	}
 
 	// Handle details element: if open attribute is missing or "open", show children

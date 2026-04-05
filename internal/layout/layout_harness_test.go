@@ -755,7 +755,28 @@ func TestLayout_NewElements(t *testing.T) {
 		// Item 17: <details> and <summary>
 		{
 			name: "details element",
-			html: "<details><summary>summary</summary>content</details>",
+			html:  "<details><summary>summary</summary>content</details>",
+			check: func(box *Box) error { return nil },
+		},
+		{
+			name: "details element open",
+			html:  "<details open><summary>summary</summary>content</details>",
+			check: func(box *Box) error { return nil },
+		},
+		// Item 17b: <figure> and <figcaption>
+		{
+			name: "figure element",
+			html:  "<figure><img src='test.png'><figcaption>Caption</figcaption></figure>",
+			check: func(box *Box) error { return nil },
+		},
+		{
+			name: "figure with multiple children",
+			html:  "<figure><div>content</div><figcaption>Caption text</figcaption></figure>",
+			check: func(box *Box) error { return nil },
+		},
+		{
+			name: "figcaption only",
+			html:  "<figcaption>Caption only</figcaption>",
 			check: func(box *Box) error { return nil },
 		},
 		// Item 20: <input> element
