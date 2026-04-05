@@ -5,8 +5,10 @@ import (
 	"image"
 	"image/color"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/nickcoury/ViBrowsing/internal/css"
 	"github.com/nickcoury/ViBrowsing/internal/fetch"
 	"github.com/nickcoury/ViBrowsing/internal/html"
@@ -32,6 +34,12 @@ type Browser struct {
 	History         []string
 	HistoryIndex    int
 	PendingNav      string // URL being navigated to (for async fetch)
+	Typing          string // what user is typing
+	TypingFocused   bool   // true when URL bar has focus and user can type
+	LastKeyTime     int64  // for detecting first keypress
+	linkClicked     bool   // prevents double-click navigation
+	KeyHeld         map[ebiten.Key]bool // tracks which keys are currently held
+	LastTypingLen   int    // length of Typing last frame (to detect changes)
 }
 
 // PageState holds the current page data
@@ -71,6 +79,7 @@ func main() {
 		HoveredLinkIdx: -1,
 		History:     []string{},
 		HistoryIndex: -1,
+		KeyHeld:     make(map[ebiten.Key]bool),
 	}
 
 	if err := ebiten.RunGame(browser); err != nil {
@@ -95,95 +104,190 @@ func (b *Browser) Update() error {
 		return nil
 	}
 
-	// Scroll with keyboard
-	scrollSpeed := 60
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyPageDown) {
-		b.ScrollY += scrollSpeed
-		if b.ScrollY > b.MaxScrollY {
-			b.ScrollY = b.MaxScrollY
+	// Handle text typing in URL bar
+	if b.TypingFocused {
+		// Character keys - only add on first press (edge detection)
+		charKeys := []struct {
+			key ebiten.Key
+			ch  rune
+		}{
+			{ebiten.KeyA, 'a'}, {ebiten.KeyB, 'b'}, {ebiten.KeyC, 'c'},
+			{ebiten.KeyD, 'd'}, {ebiten.KeyE, 'e'}, {ebiten.KeyF, 'f'},
+			{ebiten.KeyG, 'g'}, {ebiten.KeyH, 'h'}, {ebiten.KeyI, 'i'},
+			{ebiten.KeyJ, 'j'}, {ebiten.KeyK, 'k'}, {ebiten.KeyL, 'l'},
+			{ebiten.KeyM, 'm'}, {ebiten.KeyN, 'n'}, {ebiten.KeyO, 'o'},
+			{ebiten.KeyP, 'p'}, {ebiten.KeyQ, 'q'}, {ebiten.KeyR, 'r'},
+			{ebiten.KeyS, 's'}, {ebiten.KeyT, 't'}, {ebiten.KeyU, 'u'},
+			{ebiten.KeyV, 'v'}, {ebiten.KeyW, 'w'}, {ebiten.KeyX, 'x'},
+			{ebiten.KeyY, 'y'}, {ebiten.KeyZ, 'z'},
+			{ebiten.Key0, '0'}, {ebiten.Key1, '1'}, {ebiten.Key2, '2'},
+			{ebiten.Key3, '3'}, {ebiten.Key4, '4'}, {ebiten.Key5, '5'},
+			{ebiten.Key6, '6'}, {ebiten.Key7, '7'}, {ebiten.Key8, '8'},
+			{ebiten.Key9, '9'},
+			{ebiten.KeySpace, ' '},
+			{ebiten.KeyComma, ','}, {ebiten.KeyPeriod, '.'},
+			{ebiten.KeySlash, '/'}, {ebiten.KeyMinus, '-'},
+			{ebiten.KeyEqual, '='},
 		}
+
+		for _, ck := range charKeys {
+			pressed := ebiten.IsKeyPressed(ck.key)
+			if pressed && !b.KeyHeld[ck.key] {
+				// First press - add character
+				b.Typing += string(ck.ch)
+			}
+			b.KeyHeld[ck.key] = pressed
+		}
+
+		// Backspace - only on edge
+		backspacePressed := ebiten.IsKeyPressed(ebiten.KeyBackspace)
+		if backspacePressed && !b.KeyHeld[ebiten.KeyBackspace] && len(b.Typing) > 0 {
+			// Handle UTF-8 rune deletion
+			for i := len(b.Typing) - 1; i >= 0; {
+				r, size := utf8.DecodeLastRuneInString(b.Typing[:i+1])
+				b.Typing = b.Typing[:i]
+				i -= size
+				if r != utf8.RuneError || size == 1 {
+					break
+				}
+			}
+		}
+		b.KeyHeld[ebiten.KeyBackspace] = backspacePressed
+
+		// Enter - submit URL (edge)
+		enterPressed := ebiten.IsKeyPressed(ebiten.KeyEnter)
+		if enterPressed && !b.KeyHeld[ebiten.KeyEnter] {
+			url := b.Typing
+			if url != "" {
+				b.TypingFocused = false
+				b.navigateTo(url)
+			}
+			b.Typing = ""
+		}
+		b.KeyHeld[ebiten.KeyEnter] = enterPressed
+
+		// Escape - cancel typing (edge)
+		escapePressed := ebiten.IsKeyPressed(ebiten.KeyEscape)
+		if escapePressed && !b.KeyHeld[ebiten.KeyEscape] {
+			b.TypingFocused = false
+			b.Typing = ""
+		}
+		b.KeyHeld[ebiten.KeyEscape] = escapePressed
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyPageUp) {
-		b.ScrollY -= scrollSpeed
-		if b.ScrollY < 0 {
+
+	// Scroll with keyboard (only when not typing)
+	if !b.TypingFocused {
+		scrollSpeed := 60
+		if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyPageDown) {
+			b.ScrollY += scrollSpeed
+			if b.ScrollY > b.MaxScrollY {
+				b.ScrollY = b.MaxScrollY
+			}
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyPageUp) {
+			b.ScrollY -= scrollSpeed
+			if b.ScrollY < 0 {
+				b.ScrollY = 0
+			}
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyHome) {
 			b.ScrollY = 0
 		}
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyHome) {
-		b.ScrollY = 0
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyEnd) {
-		b.ScrollY = b.MaxScrollY
-	}
-
-	// Back/Forward with Alt+Arrow
-	if ebiten.IsKeyPressed(ebiten.KeyAlt) {
-		if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) && b.HistoryIndex > 0 {
-			b.HistoryIndex--
-			b.navigateTo(b.History[b.HistoryIndex])
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyArrowRight) && b.HistoryIndex < len(b.History)-1 {
-			b.HistoryIndex++
-			b.navigateTo(b.History[b.HistoryIndex])
-		}
-	}
-
-	// Mouse wheel scrolling
-	_, wheelY := ebiten.Wheel()
-	if wheelY != 0 {
-		b.ScrollY -= int(wheelY * 50)
-		if b.ScrollY < 0 {
-			b.ScrollY = 0
-		}
-		if b.ScrollY > b.MaxScrollY {
+		if ebiten.IsKeyPressed(ebiten.KeyEnd) {
 			b.ScrollY = b.MaxScrollY
 		}
-	}
 
-	// Check if mouse is in URL bar area
-	mx, my := ebiten.CursorPosition()
-	_ = mx
-
-	// URL bar click detection
-	if my >= 0 && my < navBarHeight {
-		// Check for nav button clicks
-		if mx >= 10 && mx <= 50 && !b.URLBarFocused {
-			// Back button
-			if b.HistoryIndex > 0 {
+		// Back/Forward with Alt+Arrow
+		if ebiten.IsKeyPressed(ebiten.KeyAlt) {
+			if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) && b.HistoryIndex > 0 {
 				b.HistoryIndex--
 				b.navigateTo(b.History[b.HistoryIndex])
 			}
-		} else if mx >= 55 && mx <= 95 && !b.URLBarFocused {
-			// Forward button
-			if b.HistoryIndex < len(b.History)-1 {
+			if ebiten.IsKeyPressed(ebiten.KeyArrowRight) && b.HistoryIndex < len(b.History)-1 {
 				b.HistoryIndex++
 				b.navigateTo(b.History[b.HistoryIndex])
 			}
-		} else if mx >= 100 && mx <= b.ViewportW-10 {
-			// URL bar
-			b.URLBarFocused = true
 		}
-	} else {
-		b.URLBarFocused = false
-	}
 
-	// Update hovered link
-	b.HoveredLinkIdx = -1
-	if b.Page != nil && b.Page.Canvas != nil && my >= contentOffset {
-		relY := my - contentOffset + b.ScrollY
-		for i, link := range b.Page.Links {
-			if link.Rect.Min.X <= mx && mx <= link.Rect.Max.X &&
-				link.Rect.Min.Y <= relY && relY <= link.Rect.Max.Y {
-				b.HoveredLinkIdx = i
-				break
+		// Mouse wheel scrolling
+		_, wheelY := ebiten.Wheel()
+		if wheelY != 0 {
+			b.ScrollY -= int(wheelY * 50)
+			if b.ScrollY < 0 {
+				b.ScrollY = 0
+			}
+			if b.ScrollY > b.MaxScrollY {
+				b.ScrollY = b.MaxScrollY
 			}
 		}
-	}
 
-	// Click to navigate
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && b.HoveredLinkIdx >= 0 {
-		link := b.Page.Links[b.HoveredLinkIdx]
-		b.navigateTo(link.HREF)
+		// Mouse click handling
+		mx, my := ebiten.CursorPosition()
+
+		// URL bar click detection
+		if my >= 0 && my < navBarHeight {
+			// Check for nav button clicks
+			if mx >= 10 && mx <= 50 && !b.TypingFocused {
+				// Back button
+				if b.HistoryIndex > 0 {
+					b.HistoryIndex--
+					b.navigateTo(b.History[b.HistoryIndex])
+				}
+			} else if mx >= 55 && mx <= 95 && !b.TypingFocused {
+				// Forward button
+				if b.HistoryIndex < len(b.History)-1 {
+					b.HistoryIndex++
+					b.navigateTo(b.History[b.HistoryIndex])
+				}
+			} else if mx >= b.ViewportW-58 && mx <= b.ViewportW-10 {
+				// Go button clicked
+				if b.TypingFocused || b.Typing != "" {
+					url := b.Typing
+					if url != "" {
+						b.navigateTo(url)
+					}
+					b.Typing = ""
+					b.TypingFocused = false
+				} else {
+					// Start typing in URL bar
+					b.TypingFocused = true
+					b.Typing = b.URLBarText
+					b.URLBarFocused = true
+				}
+			} else if mx >= 100 && mx <= b.ViewportW-60 {
+				// URL bar clicked - focus for typing
+				b.TypingFocused = true
+				b.Typing = b.URLBarText
+				b.URLBarFocused = true
+			}
+		} else {
+			b.URLBarFocused = false
+		}
+
+		// Update hovered link
+		b.HoveredLinkIdx = -1
+		if b.Page != nil && b.Page.Canvas != nil && my >= contentOffset {
+			relY := my - contentOffset + b.ScrollY
+			for i, link := range b.Page.Links {
+				if link.Rect.Min.X <= mx && mx <= link.Rect.Max.X &&
+					link.Rect.Min.Y <= relY && relY <= link.Rect.Max.Y {
+					b.HoveredLinkIdx = i
+					break
+				}
+			}
+		}
+
+		// Click to navigate
+		if b.HoveredLinkIdx >= 0 && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			// Only navigate once per click (when first pressed)
+			if !b.linkClicked {
+				link := b.Page.Links[b.HoveredLinkIdx]
+				b.navigateTo(link.HREF)
+				b.linkClicked = true
+			}
+		} else {
+			b.linkClicked = false
+		}
 	}
 
 	return nil
@@ -222,22 +326,32 @@ func (b *Browser) Draw(screen *ebiten.Image) {
 
 	// URL bar
 	urlBarBg := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-	drawRect(screen, 155, 8, b.ViewportW-170, 24, urlBarBg)
-
-	// Draw URL text using a simple approach
-	urlText := b.URLBarText
-	if urlText == "" {
-		urlText = "Enter URL..."
+	if b.TypingFocused {
+		urlBarBg = color.RGBA{R: 255, G: 255, B: 220, A: 255}
 	}
-	// For simplicity, draw a colored rectangle as placeholder for text
+	drawRect(screen, 155, 8, b.ViewportW-220, 24, urlBarBg)
+
+	// Draw Go button
+	goBtnColor := color.RGBA{R: 70, G: 120, B: 200, A: 255}
+	drawRect(screen, b.ViewportW-58, 8, 45, 24, goBtnColor)
+
+	// Show what user is typing, or current URL
+	displayText := b.Typing
+	if !b.TypingFocused && b.Typing == "" {
+		displayText = b.URLBarText
+	}
+	if displayText == "" {
+		displayText = "Enter URL..."
+	}
 	urlTextColor := color.RGBA{R: 0, G: 0, B: 0, A: 255}
-
-	// Draw loading spinner or URL
-	if b.Loading {
-		drawTextAt(screen, "Loading...", 162, navBarHeight/2-6, urlTextColor)
-	} else {
-		drawTextAt(screen, urlText, 162, navBarHeight/2-6, urlTextColor)
+	if !b.TypingFocused && b.Typing == "" && b.URLBarText == "" {
+		urlTextColor = color.RGBA{R: 140, G: 140, B: 140, A: 255}
 	}
+	drawTextAt(screen, displayText, 162, navBarHeight/2-6, urlTextColor)
+
+	// Draw "Go" text on button
+	goTextColor := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	drawTextAt(screen, "Go", b.ViewportW-50, navBarHeight/2-6, goTextColor)
 
 	// Draw page content
 	if b.Page != nil && b.Page.Canvas != nil && !b.Loading {
@@ -321,14 +435,11 @@ func drawRectOutline(screen *ebiten.Image, rect image.Rectangle, col color.Color
 }
 
 func drawTextAt(screen *ebiten.Image, text string, x, y int, col color.Color) {
-	// Use a simple approach: draw as debug message at a position
-	// For actual text we'd need font rendering, but for now use a white background rect
-	// and the ebitenutil will draw on top
-	_ = text
-	_ = x
-	_ = y
-	_ = col
-	// We'll use ebitenutil.DebugPrint at specific positions instead
+	// Use ebitenutil.DebugPrintAt for simple text rendering
+	// Note: DebugPrintAt doesn't support custom colors, so we draw a background rect
+	// with the text color and use white text. For proper color support we'd need freetype.
+	// For now just draw the text as-is
+	ebitenutil.DebugPrintAt(screen, text, x, y)
 }
 
 // navigateTo navigates to a URL (async)

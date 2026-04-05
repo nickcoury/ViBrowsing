@@ -55,6 +55,7 @@ const (
 	LegendBox
 	MapBox
 	DataBox
+	DataListBox
 )
 
 // Box represents a CSS box in the layout tree.
@@ -93,6 +94,12 @@ type Box struct {
 
 	// Data element property
 	DataValue string // value attribute of <data> element
+
+	// Scroll properties for overflow containers
+	ScrollLeft  float64 // horizontal scroll position
+	ScrollTop   float64 // vertical scroll position
+	ScrollWidth  float64 // total scrollable width
+	ScrollHeight float64 // total scrollable height
 }
 
 // FindBoxByNode finds the first box in the tree that corresponds to the given DOM node.
@@ -166,6 +173,58 @@ func (b *Box) scrollIntoViewInternal(options interface{}, accumulatedY float64) 
 	}
 
 	return 0
+}
+
+// ScrollBy scrolls the element by the specified amounts.
+// Options can be:
+//   - float64 x, float64 y: scroll by (x, y) pixels
+//   - map with "left" (dx) and "top" (dy) keys
+// Returns the new scroll positions.
+func (b *Box) ScrollBy(x interface{}, yOpt ...interface{}) (scrollLeft, scrollTop float64) {
+	var dx, dy float64
+
+	switch arg := x.(type) {
+	case float64:
+		dx = arg
+		if len(yOpt) > 0 {
+			if dyVal, ok := yOpt[0].(float64); ok {
+				dy = dyVal
+			}
+		}
+	case map[string]interface{}:
+		if left, ok := arg["left"].(float64); ok {
+			dx = left
+		}
+		if top, ok := arg["top"].(float64); ok {
+			dy = top
+		}
+	}
+
+	// Apply scroll deltas
+	b.ScrollLeft += dx
+	b.ScrollTop += dy
+
+	// Clamp to scroll bounds
+	if b.ScrollLeft < 0 {
+		b.ScrollLeft = 0
+	}
+	if b.ScrollLeft > b.ScrollWidth-b.ContentW {
+		b.ScrollLeft = b.ScrollWidth - b.ContentW
+		if b.ScrollLeft < 0 {
+			b.ScrollLeft = 0
+		}
+	}
+	if b.ScrollTop < 0 {
+		b.ScrollTop = 0
+	}
+	if b.ScrollTop > b.ScrollHeight-b.ContentH {
+		b.ScrollTop = b.ScrollHeight - b.ContentH
+		if b.ScrollTop < 0 {
+			b.ScrollTop = 0
+		}
+	}
+
+	return b.ScrollLeft, b.ScrollTop
 }
 
 // GetWidth returns the computed width of the content area.
@@ -511,6 +570,14 @@ func buildBox(node *html.Node, rules []css.Rule, depth int, parentStyle map[stri
 				box.ColSpan = v
 			}
 		}
+	case "time":
+		box.Type = InlineBox
+		// time element represents a time/date - inline by default
+		// datetime attribute can be used for machine-readable format
+	case "datalist":
+		box.Type = DataListBox
+		// datalist provides autocomplete suggestions for input elements
+		// Hidden by default, referenced by input's list attribute
 	}
 
 	// Flex container

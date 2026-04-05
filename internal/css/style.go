@@ -1337,6 +1337,23 @@ func matchPseudoClass(node *html.Node, pseudoName, pseudoArg string) bool {
 			}
 		}
 		return last == node
+	case "nth-last-of-type":
+		return MatchNthChild(node, pseudoArg, true, true)
+	case "only-of-type":
+		if node.Parent == nil {
+			return false
+		}
+		tag := node.TagName
+		count := 0
+		for _, child := range node.Parent.Children {
+			if child.Type == html.NodeElement && child.TagName == tag {
+				count++
+				if count > 1 {
+					return false
+				}
+			}
+		}
+		return count == 1
 	case "empty":
 		for _, child := range node.Children {
 			if child.Type == html.NodeElement {

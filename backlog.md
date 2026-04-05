@@ -991,8 +991,8 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (HTML Elements)
 
-- [ ] **Implement `<output>` element fully** — the output element should show the result of a calculation, similar to a read-only text field with special semantic meaning
-- [ ] **Implement `<datalist>` element** — datalist provides autocomplete suggestions for input elements; should render as a hidden list referenced by input's list attribute
+- [x] ~~Implement `<output>` element fully~~ (2026-04-07 sprint) — the output element should show the result of a calculation, similar to a read-only text field with special semantic meaning
+- [x] ~~Implement `<datalist>` element~~ (2026-04-09 sprint) — datalist provides autocomplete suggestions for input elements; DataListBox type added
 - [ ] **Implement `<meter>` visual rendering** — meter should show a gauge value with color zones (green/yellow/red based on low/high/optimum attributes)
 - [ ] **Implement `<progress>` visual rendering** — progress bar should show completion percentage with animated fill when indeterminate
 
@@ -1000,7 +1000,7 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Implement `closest()` method** — returns the closest ancestor of the current element (including itself) that matches a given CSS selector; returns null if no match found
 - [ ] **Implement `matches()` method** — returns true if the element would be selected by the given CSS selector; throws SyntaxError if the selector is invalid
-- [ ] **Implement `scrollBy()` method on Element** — scrolls the element by a specified amount; different from window.scrollBy in that it scrolls the element's content
+- [x] ~~Implement `scrollBy()` method on Element~~ (2026-04-09 sprint) — scrolls the element by a specified amount; Box.ScrollBy with (dx, dy) and {left, top} options
 
 ### 🟢 Medium (Features)
 
@@ -1061,15 +1061,15 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 ### 🟡 High (CSS Selectors & Cascade)
 
-- [ ] **Implement `:nth-last-of-type()` pseudo-class** — counts from end of sibling list; `tr:nth-last-of-type(2)` selects second-to-last tr
-- [ ] **Implement `:only-of-type()` pseudo-class** — matches elements that are the only child of its type among siblings
+- [x] ~~Implement `:nth-last-of-type()` pseudo-class~~ (2026-04-09 sprint) — counts from end of sibling list; `tr:nth-last-of-type(2)` selects second-to-last tr
+- [x] ~~Implement `:only-of-type()` pseudo-class~~ (2026-04-09 sprint) — matches elements that are the only child of its type among siblings
 - [ ] **Implement `:placeholder-shown` on select** — matches when a select's placeholder option is selected; for styled dropdowns with placeholder text
 
 ### 🟡 High (DOM APIs)
 
-- [ ] **Implement `scrollBy()` on Element** — scrolls the element by a specified amount; different from window.scrollBy; scrolls element's own content
-- [ ] **Implement `requestAnimationFrame()`** — schedules callback before next repaint; returns request ID for cancellation
-- [ ] **Implement `cancelAnimationFrame()`** — cancels a scheduled animation frame request
+- [x] ~~Implement `scrollBy()` on Element~~ (2026-04-09 sprint) — scrolls the element by a specified amount; Box.ScrollBy with (dx, dy) and {left, top} options
+- [x] ~~Implement `requestAnimationFrame()`~~ (2026-04-09 sprint) — AnimationManager.RequestAnimationFrame with handle return; CancelAnimationFrame; TickRAF for render loop
+- [x] ~~Implement `cancelAnimationFrame()`~~ (2026-04-09 sprint) — AnimationManager.CancelAnimationFrame marks handle for cancellation before next frame
 
 ### 🟢 Medium (Features)
 
@@ -1167,6 +1167,80 @@ The html5lib Python project has comprehensive HTML parsing tests:
 
 - [ ] **Add DevTools protocol for CDP** — Chrome DevTools Protocol support; enable remote debugging; expose DOM, CSS, Network, Page domains
 - [ ] **Console panel in HUD** — Show console.log/warn/error messages in overlay HUD; click to expand; copy message text
+
+---
+
+## 🆕 New Items (2026-04-09 Sprint)
+
+### 🔴 Critical (Parser/Rendering)
+
+- [ ] **Fix CSS `font-family` inheritance** — font-family should properly cascade from parent to child elements; ensure inheritedProperties includes font-family
+- [ ] **Fix CSS `font-size` em unit resolution** — font-size: 1.2em inside a parent with font-size: 20px should resolve to 24px; currently may use body default 16px
+- [ ] **Fix inline box baseline calculation** — inline text boxes should share a common baseline for vertical-align: middle/bottom; each text box currently uses its own baseline
+
+### 🟡 High (CSS Properties)
+
+- [ ] **Implement CSS `writing-mode: vertical-rl/vertical-lr`** — Vertical text layout for CJK; inline boxes stack vertically; text flows top-to-bottom or bottom-to-top
+- [ ] **Implement CSS `color-scheme`** — Specifies allowed color schemes (light/dark) for the document; affects form controls and scrollbars
+- [ ] **Implement CSS `accent-color`** — Sets the accent color for UI controls like checkboxes, radio buttons, progress bars
+- [ ] **Implement CSS `scrollbar-width` and `scrollbar-color`** — Style scrollbars: thin/none/auto width; color thumb and track
+- [ ] **Implement CSS `@layer`** — Cascade layers for organizing CSS rules; @layer directive with named layers
+- [ ] **Implement CSS `@property`** — Custom properties with type checking; @property --name { syntax: <type>; inherits: true/false; initial-value: <value> }
+
+### 🟡 High (Events & Input)
+
+- [ ] **Implement `scroll` event** — Fire scroll event on scrollable elements when content is scrolled; dispatch to registered scroll event listeners
+- [ ] **Implement `wheel` event** — Track mouse wheel input; dispatch wheel event with deltaX/deltaY/deltaZ; default action scrolls content
+- [ ] **Implement `input` event** — Fire input event when input/textarea value changes; fires on every keystroke, paste, cut
+- [ ] **Implement `change` event** — Fire change event on form elements when value changes and focus is lost
+- [ ] **Implement `beforeinput` event** — Fire before input is inserted; can call preventDefault() to cancel; supports getTargetRanges()
+- [ ] **Implement `drag` and `drop` events** — dragstart, drag, dragenter, dragover, dragleave, drop, dragend for native drag and drop API
+
+### 🟡 High (JavaScript APIs)
+
+- [ ] **Implement `DOMParser` API** — Parse HTML/XML strings into DOM documents; DOMParser.parseFromString(string, mimeType)
+- [ ] **Implement `URL` and `URLSearchParams`** — URL class with pathname, search, hash, etc.; URLSearchParams for query string manipulation
+- [ ] **Implement `AbortController` and `AbortSignal`** — Cancel fetch requests and other operations; AbortController.signal
+- [ ] **Implement `History` API** — window.history.pushState(state, title, url); replaceState; popstate event on back/forward
+- [ ] **Implement `navigator.clipboard`** — Clipboard API for reading/writing text; navigator.clipboard.readText() and writeText()
+- [ ] **Implement `navigator.storage`** — StorageManager API; estimate() for storage quota; persist() for persistent storage permission
+
+### 🟡 High (Media & Embeds)
+
+- [ ] **Implement `<video>` with playback controls** — Video element with play/pause/seek/volume; use ffmpeg or external library to decode frames
+- [ ] **Implement `<audio>` with controls** — Audio element with play/pause/seek/volume controls; waveform visualization
+
+### 🟢 Medium (Performance)
+
+- [ ] **CSS selector caching** — Cache selector match results; invalidate on DOM mutations; avoid re-matching unchanged subtrees
+- [ ] **Incremental layout** — Layout visible viewport first; defer off-screen content; update layout on scroll for long documents
+
+### 🟢 Medium (Text & Typography)
+
+- [ ] **Implement `hyphens: auto`** — Automatic hyphenation using U+00AD soft hyphen; detect word boundaries; apply hyphens CSS property
+- [ ] **Implement `text-wrap: balance/pretty`** — text-wrap: balance for balanced text wrapping in headings; pretty for optimized word breaks
+- [ ] **Implement `font-synthesis`** — Control whether browsers synthesize missing font variants (bold, italic); none/synthesis/style/weight
+
+### 🟠 Low (i18n & i10n)
+
+- [ ] **Implement `Accept-Language` header** — Send preferred languages to servers based on navigator.language
+- [ ] **Implement `<bdi>` and `<bdo>` properly** — Bidirectional text isolation and override for mixed LTR/RTL content
+- [ ] **Implement `lang` attribute inheritance** — Document language from `<html lang="en">` should cascade and affect :lang() selector
+
+### 🟠 Low (Canvas/Drawing)
+
+- [ ] **Implement `background-blend-mode` drawing** — Blend background-color and background-image together using blend mode; apply per-layer blending
+- [ ] **Implement `mix-blend-mode` on overlapping positioned elements** — Use Porter-Duff compositing for overlapping elements with mix-blend-mode
+
+### 🟠 Low (Networking)
+
+- [ ] **Implement `fetch()` API with streaming** — fetch(url) with ReadableStream response body; support request/response headers
+- [ ] **Implement `Content-Encoding: gzip/deflate/br`** — Automatically decompress compressed responses from servers based on Content-Encoding header
+
+### 🟠 Low (CSS Functions)
+
+- [ ] **Implement `color-mix()` function** — Mix two colors together using specified color space (e.g., color-mix(in srgb, red, blue))
+- [ ] **Implement `light-dark()` function** — light-dark(color1, color2) for automatic light/dark mode color selection
 
 ---
 

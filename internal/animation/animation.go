@@ -29,13 +29,19 @@ type AnimationManager struct {
 	Animations []*Animation
 	// KeyframeRules maps animation name to keyframe definitions
 	KeyframeRules map[string]map[float64]map[string]string
+	// RAF callbacks scheduled via requestAnimationFrame
+	RAFCallbacks map[int]func(float64) // callback handle -> callback
+	RAFHandle     int                   // next RAF handle
+	RAFCallbacksToCancel map[int]bool  // handles to cancel next frame
 }
 
 // NewAnimationManager creates a new animation manager.
 func NewAnimationManager() *AnimationManager {
 	return &AnimationManager{
-		Animations:    []*Animation{},
-		KeyframeRules: make(map[string]map[float64]map[string]string),
+		Animations:           []*Animation{},
+		KeyframeRules:        make(map[string]map[float64]map[string]string),
+		RAFCallbacks:         make(map[int]func(float64)),
+		RAFCallbacksToCancel: make(map[int]bool),
 	}
 }
 
@@ -427,4 +433,45 @@ func parseFloat(s string) (float64, error) {
 		}
 	}
 	return val, nil
+}
+
+// RequestAnimationFrame schedules a callback to be called before the next repaint.
+// Returns a request ID that can be passed to cancelAnimationFrame to cancel the request.
+func (am *AnimationManager) RequestAnimationFrame(callback func(float64)) int {
+	am.RAFHandle++
+	handle := am.RAFHandle
+	am.RAFCallbacks[handle] = callback
+	return handle
+}
+
+// CancelAnimationFrame cancels a scheduled animation frame request.
+func (am *AnimationManager) CancelAnimationFrame(handle int) {
+	// Mark for cancellation - will be removed before next frame runs
+	am.RAFCallbacksToCancel[handle] = true
+}
+
+// TickRAF executes all scheduled RAF callbacks with the given timestamp.
+// Called by the render loop before each paint.
+// Returns how many callbacks were executed.
+func (am *AnimationManager) TickRAF(timestamp float64) int {
+	// First, cancel any pending cancellations
+	for handle := range am.RAFCallbacksToCancel {
+		delete(am.RAFCallbacks, handle)
+		delete(am.RAFCallbacksToCancel, handle)
+	}
+
+	count := 0
+	for handle, callback := range am.RAFCallbacks {
+		if !am.RAFCallbacksToCancel[handle] {
+			callback(timestamp)
+			count++
+		}
+	}
+	return count
+}
+
+// FlushRAF cancels all pending RAF callbacks without executing them.
+func (am *AnimationManager) FlushRAF() {
+	am.RAFCallbacks = make(map[int]func(float64))
+	am.RAFCallbacksToCancel = make(map[int]bool)
 }
